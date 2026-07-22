@@ -1,0 +1,90 @@
+/* ABAP Bakery App — shared styles */
+:root {
+  --brown: #6B4F3A;
+  --tan: #D8C3A5;
+  --light: #F5EFE6;
+  --dark: #2F2A26;
+  --red: #B23A2E;
+  --green: #4A7C4E;
+  --card: #ffffff;
+  --line: #E3D8C6;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--light);
+  color: var(--dark);
+  padding-bottom: 80px;
+}
+header.topbar {
+  background: var(--brown);
+  color: #fff;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+header.topbar h1 { font-size: 18px; margin: 0; font-weight: 700; }
+header.topbar .who { font-size: 12px; opacity: 0.85; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+h2.section { font-size: 15px; color: var(--brown); margin: 22px 4px 8px; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.row:last-child { border-bottom: none; }
+.row .txt { flex: 1; font-size: 15px; line-height: 1.35; }
+.row .sub { font-size: 12px; color: #8a7d6d; margin-top: 2px; }
+.row.done .txt { text-decoration: line-through; color: #a99; }
+input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--brown); flex-shrink: 0; }
+input[type=number], input[type=text], input[type=email], input[type=password] {
+  font-size: 16px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 8px; width: 100%; background: #fff;
+}
+button {
+  font-size: 15px; font-weight: 600; padding: 12px 18px; border: none;
+  border-radius: 10px; background: var(--brown); color: #fff; cursor: pointer;
+}
+button.secondary { background: var(--tan); color: var(--dark); }
+button:active { opacity: .85; }
+.pill { font-size: 11px; padding: 3px 9px; border-radius: 20px; font-weight: 700; }
+.pill.below { background: #f7d5d0; color: var(--red); }
+.pill.extra { background: #d9ead3; color: var(--green); }
+.count-num { width: 84px !important; text-align: center; }
+.below-row { background: #fbeae7; }
+.progress-wrap { background: var(--line); border-radius: 20px; height: 14px; overflow: hidden; }
+.progress-bar { background: var(--green); height: 100%; transition: width .3s; }
+.big-num { font-size: 34px; font-weight: 800; color: var(--brown); }
+.muted { color: #8a7d6d; font-size: 13px; }
+.center { text-align: center; }
+nav.tabs {
+  position: fixed; bottom: 0; left: 0; right: 0; background: #fff;
+  border-top: 1px solid var(--line); display: flex; justify-content: space-around;
+  padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+}
+nav.tabs a {
+  flex: 1; text-align: center; text-decoration: none; color: #8a7d6d;
+  font-size: 11px; font-weight: 600; padding: 4px;
+}
+nav.tabs a.active { color: var(--brown); }
+nav.tabs a .ico { display: block; font-size: 20px; margin-bottom: 2px; }
+.login-box { max-width: 380px; margin: 12vh auto; padding: 28px; }
+.login-box h1 { color: var(--brown); text-align: center; margin-top: 0; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 13px; margin-bottom: 5px; font-weight: 600; }
+.error { color: var(--red); font-size: 14px; margin: 10px 0; min-height: 18px; }
+.empty { text-align: center; color: #8a7d6d; padding: 30px 10px; }

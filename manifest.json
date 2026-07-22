@@ -1,0 +1,20 @@
+{
+  "name": "ABAP Bakery Operations",
+  "short_name": "ABAP Bakery",
+  "start_url": "shift.html",
+  "display": "standalone",
+  "background_color": "#F5EFE6",
+  "theme_color": "#6B4F3A",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

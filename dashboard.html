@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body>
+  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="config.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    (async () => {
+      if (!(await requireLogin())) return;
+      await renderTopbar("Dashboard");
+      renderNav("dashboard");
+      await load();
+    })();
+
+    function isBelow(it) {
+      return it.current_on_hand != null && it.threshold != null
+             && Number(it.current_on_hand) < Number(it.threshold);
+    }
+
+    async function load() {
+      const { data: items } = await sb.from("inventory_items").select("*");
+      const { data: tasks } = await sb.from("tasks").select("*").eq("active", true);
+
+      // completions for current periods
+      const done = new Set();
+      for (const f of ["each_shift","daily","weekly","monthly"]) {
+        const pk = periodKey(f);
+        const ids = tasks.filter(t => t.frequency === f).map(t => t.id);
+        if (!ids.length) continue;
+        const { data: comps } = await sb.from("task_completions")
+          .select("task_id").eq("period_key", pk).in("task_id", ids);
+        (comps || []).forEach(c => done.add(c.task_id));
+      }
+
+      // per-owner completion %
+      const owners = ["sierra","mackenzie","marilyn","shared"];
+      const ownerPct = owners.map(o => {
+        const ts = tasks.filter(t => t.owner === o);
+        if (!ts.length) return { o, pct: null, done: 0, total: 0 };
+        const d = ts.filter(t => done.has(t.id)).length;
+        return { o, pct: Math.round(d / ts.length * 100), done: d, total: ts.length };
+      });
+
+      const below = items.filter(isBelow);
+      const extra = items.filter(i => i.order_extra);
+      const toOrder = [...new Set([...below, ...extra])];
+      const inStock = items.length - below.length;
+
+      let html = "";
+
+      // Order alert banner
+      html += `<div class="card" style="background:${toOrder.length? '#fbeae7':'#e9f2e6'}">
+        <strong style="color:${toOrder.length? 'var(--red)':'var(--green)'}">
+        ${toOrder.length ? `${toOrder.length} item(s) to order` : "Nothing to order right now"}</strong></div>`;
+
+      // Completion cards
+      html += `<h2 class="section">Task completion (this period)</h2><div class="card">`;
+      ownerPct.forEach(op => {
+        if (op.pct === null) return;
+        const label = op.o.charAt(0).toUpperCase()+op.o.slice(1);
+        html += `<div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:14px">
+            <span>${label}</span><span class="muted">${op.done}/${op.total} · ${op.pct}%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar" style="width:${op.pct}%"></div></div>
+        </div>`;
+      });
+      html += `</div>`;
+
+      // Inventory health chart
+      html += `<h2 class="section">Inventory health</h2>
+        <div class="card"><canvas id="invChart" height="160"></canvas></div>`;
+
+      // Items to order list
+      html += `<h2 class="section">Items to order</h2><div class="card">`;
+      if (!toOrder.length) html += `<div class="empty">All stocked.</div>`;
+      toOrder.forEach(it => {
+        html += `<div class="row">
+          <div class="txt">${it.name}
+            <div class="sub">${it.owner} · ${isBelow(it) ? "Below threshold" : "Order extra"}
+              ${it.reorder_note ? "· "+it.reorder_note : ""}</div>
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+
+      document.getElementById("app").innerHTML = html;
+
+      // draw chart
+      new Chart(document.getElementById("invChart"), {
+        type: "doughnut",
+        data: {
+          labels: ["In stock", "Below threshold", "Order extra"],
+          datasets: [{
+            data: [inStock, below.length, extra.length],
+            backgroundColor: ["#4A7C4E", "#B23A2E", "#D8C3A5"]
+          }]
+        },
+        options: { plugins: { legend: { position: "bottom" } } }
+      });
+    }
+  </script>
+</body>
+</html>

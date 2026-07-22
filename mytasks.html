@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>My Tasks</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body>
+  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    // Map each login to which task-owner they see. Adjust emails after you create users.
+    // Fallback: show tasks matching the person's first name (lowercased) if it's an owner.
+    let OWNER = null, TASKS = [], DONE = {};
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      await renderTopbar("My Tasks");
+      renderNav("mytasks");
+      const prof = await getMyProfile();
+      // Decide whose tasks to show: match profile name to an owner keyword.
+      const name = (prof?.full_name || "").toLowerCase();
+      if (name.includes("sierra")) OWNER = "sierra";
+      else if (name.includes("mackenzie") || name.includes("kenzie")) OWNER = "mackenzie";
+      else if (name.includes("marilyn")) OWNER = "marilyn";
+      await load();
+    })();
+
+    async function load() {
+      if (!OWNER) {
+        document.getElementById("app").innerHTML =
+          `<div class="card"><div class="empty">Your account isn't linked to a task list yet.<br>
+           An admin can set your name to include Sierra, Mackenzie, or Marilyn.</div></div>`;
+        return;
+      }
+      const { data: tasks } = await sb.from("tasks")
+        .select("*").eq("owner", OWNER).eq("active", true).order("frequency").order("sort_order");
+      TASKS = tasks || [];
+
+      // gather completions for all relevant period keys
+      const freqs = [...new Set(TASKS.map(t => t.frequency))];
+      DONE = {};
+      for (const f of freqs) {
+        const pk = periodKey(f);
+        const ids = TASKS.filter(t => t.frequency === f).map(t => t.id);
+        const { data: comps } = await sb.from("task_completions")
+          .select("task_id").eq("period_key", pk).in("task_id", ids.length ? ids : [-1]);
+        (comps || []).forEach(c => DONE[c.task_id] = true);
+      }
+      render();
+    }
+
+    const FREQ_LABEL = { each_shift: "Each Shift", daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+
+    function render() {
+      const app = document.getElementById("app");
+      const byFreq = {};
+      TASKS.forEach(t => (byFreq[t.frequency] ||= []).push(t));
+
+      let html = "";
+      ["each_shift","daily","weekly","monthly"].forEach(f => {
+        if (!byFreq[f]) return;
+        const items = byFreq[f];
+        const done = items.filter(t => DONE[t.id]).length;
+        const pct = Math.round(done / items.length * 100);
+        html += `<h2 class="section">${FREQ_LABEL[f]} — ${done}/${items.length} (${pct}%)</h2>
+          <div class="card">
+            <div class="progress-wrap" style="margin-bottom:10px"><div class="progress-bar" style="width:${pct}%"></div></div>`;
+        items.forEach(t => {
+          const d = DONE[t.id];
+          html += `<label class="row ${d ? "done" : ""}">
+            <input type="checkbox" ${d ? "checked" : ""} onchange="toggle(${t.id}, '${t.frequency}', this.checked)">
+            <div class="txt">${t.text}${t.area ? `<div class="sub">${t.area}</div>` : ""}</div>
+          </label>`;
+        });
+        html += `</div>`;
+      });
+      app.innerHTML = html || `<div class="empty">No tasks assigned.</div>`;
+    }
+
+    async function toggle(taskId, freq, checked) {
+      const pk = periodKey(freq);
+      if (checked) {
+        DONE[taskId] = true;
+        const { data: { user } } = await sb.auth.getUser();
+        await sb.from("task_completions").upsert(
+          { task_id: taskId, period_key: pk, completed_by: user.id },
+          { onConflict: "task_id,period_key" });
+      } else {
+        delete DONE[taskId];
+        await sb.from("task_completions").delete().eq("task_id", taskId).eq("period_key", pk);
+      }
+      render();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ABAP Bakery — Sign In</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body>
+  <div class="wrap">
+    <div class="card login-box">
+      <h1>ABAP Bakery</h1>
+      <p class="muted center">Team Operations</p>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="email" autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="error" id="err"></div>
+      <button id="loginBtn" style="width:100%">Sign In</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script>
+    // If already signed in, skip straight to the app.
+    (async () => {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) window.location.href = "shift.html";
+    })();
+
+    const err = document.getElementById("err");
+    document.getElementById("loginBtn").addEventListener("click", doLogin);
+    document.getElementById("password").addEventListener("keydown", e => {
+      if (e.key === "Enter") doLogin();
+    });
+
+    async function doLogin() {
+      err.textContent = "";
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      if (!email || !password) { err.textContent = "Enter your email and password."; return; }
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { err.textContent = error.message; return; }
+      window.location.href = "shift.html";
+    }
+  </script>
+</body>
+</html>

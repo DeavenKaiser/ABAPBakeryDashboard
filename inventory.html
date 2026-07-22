@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Inventory</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body>
+  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    let ITEMS = [], FILTER = "all";
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      await renderTopbar("Inventory");
+      renderNav("inventory");
+      await load();
+    })();
+
+    async function load() {
+      const { data } = await sb.from("inventory_items")
+        .select("*")
+        .order("owner").order("category").order("name");
+      ITEMS = data || [];
+      render();
+    }
+
+    function isBelow(it) {
+      return it.current_on_hand != null && it.threshold != null
+             && Number(it.current_on_hand) < Number(it.threshold);
+    }
+
+    function render() {
+      const app = document.getElementById("app");
+      let list = ITEMS.slice();
+      if (FILTER === "below") list = list.filter(isBelow);
+      else if (FILTER === "extra") list = list.filter(i => i.order_extra);
+      else if (FILTER === "tocount") list = list.filter(i => !i.counted_this_week);
+
+      const belowN = ITEMS.filter(isBelow).length;
+      const extraN = ITEMS.filter(i => i.order_extra).length;
+      const toCount = ITEMS.filter(i => !i.counted_this_week).length;
+
+      let html = `
+        <div class="card">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${filterBtn("all", "All ("+ITEMS.length+")")}
+            ${filterBtn("below", "Below ("+belowN+")")}
+            ${filterBtn("extra", "Order Extra ("+extraN+")")}
+            ${filterBtn("tocount", "To Count ("+toCount+")")}
+          </div>
+        </div>`;
+
+      let lastGroup = "";
+      let open = false;
+      list.forEach(it => {
+        const g = it.owner.charAt(0).toUpperCase()+it.owner.slice(1) + " · " + (it.category || "—");
+        if (g !== lastGroup) {
+          if (open) html += `</div>`;
+          html += `<h2 class="section">${g}</h2><div class="card">`;
+          lastGroup = g; open = true;
+        }
+        const below = isBelow(it);
+        html += `
+          <div class="row ${below ? "below-row" : ""}">
+            <div class="txt">
+              ${it.name}
+              ${below ? '<span class="pill below">BELOW</span>' : ''}
+              ${it.order_extra ? '<span class="pill extra">EXTRA</span>' : ''}
+              <div class="sub">min ${it.min_on_hand ?? "—"} · threshold ${it.threshold ?? "—"} ${it.unit ? "· "+it.unit : ""}</div>
+              <div class="sub">
+                <label style="margin-right:12px"><input type="checkbox" style="width:16px;height:16px;vertical-align:-3px"
+                  ${it.order_extra ? "checked" : ""} onchange="setExtra(${it.id}, this.checked)"> Order extra</label>
+                <label><input type="checkbox" style="width:16px;height:16px;vertical-align:-3px"
+                  ${it.counted_this_week ? "checked" : ""} onchange="setCounted(${it.id}, this.checked)"> Counted</label>
+              </div>
+            </div>
+            <input type="number" class="count-num" value="${it.current_on_hand ?? ""}"
+                   placeholder="qty" onchange="setCount(${it.id}, this.value)">
+          </div>`;
+      });
+      if (open) html += `</div>`;
+      if (!list.length) html += `<div class="empty">Nothing here.</div>`;
+      app.innerHTML = html;
+    }
+
+    function filterBtn(id, label) {
+      return `<button class="${FILTER===id?"":"secondary"}" onclick="FILTER='${id}';render()">${label}</button>`;
+    }
+
+    async function setCount(id, val) {
+      const num = val === "" ? null : Number(val);
+      const it = ITEMS.find(i => i.id === id); it.current_on_hand = num;
+      const { data: { user } } = await sb.auth.getUser();
+      await sb.from("inventory_items").update({ current_on_hand: num, updated_at: new Date().toISOString(), updated_by: user.id }).eq("id", id);
+      render();
+    }
+    async function setExtra(id, checked) {
+      const it = ITEMS.find(i => i.id === id); it.order_extra = checked;
+      await sb.from("inventory_items").update({ order_extra: checked }).eq("id", id);
+      render();
+    }
+    async function setCounted(id, checked) {
+      const it = ITEMS.find(i => i.id === id); it.counted_this_week = checked;
+      await sb.from("inventory_items").update({ counted_this_week: checked }).eq("id", id);
+      render();
+    }
+  </script>
+</body>
+</html>
