@@ -46,6 +46,20 @@
       DONE = new Set((comps || []).map(c => c.task_id));
 
       render();
+      loadNote();
+    }
+
+    async function loadNote() {
+      const { data } = await sb.from("shift_note").select("body").eq("id",1).single();
+      const box = document.getElementById("handoffBox");
+      if (box && data) box.value = data.body || "";
+    }
+    async function saveNote() {
+      const box = document.getElementById("handoffBox");
+      const { data: { user } } = await sb.auth.getUser();
+      await sb.from("shift_note").update({ body: box.value, updated_by: user.id, updated_at: new Date().toISOString() }).eq("id",1);
+      const s = document.getElementById("handoffSaved");
+      s.textContent = "Saved ✓"; setTimeout(()=>s.textContent="", 2000);
     }
 
     function render() {
@@ -60,6 +74,14 @@
       TASKS.forEach(t => { (byArea[t.area || "Other"] ||= []).push(t); });
 
       let html = `
+        <div class="card handoff">
+          <div class="lbl" style="font-size:11px;font-weight:800;color:#a07d2c;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Shift Handoff Note</div>
+          <textarea id="handoffBox" placeholder="Leave a note for whoever's working next — e.g. low on oat milk, oven runs hot, delivery expected 2pm…"></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+            <span class="saved" id="handoffSaved"></span>
+            <button class="mini" onclick="saveNote()">Save note</button>
+          </div>
+        </div>
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:baseline">
             <div class="big-num">${doneCount}/${TASKS.length}</div>

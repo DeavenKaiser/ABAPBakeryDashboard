@@ -17,33 +17,91 @@
   <script>
     let IS_ADMIN=false;
     (async () => {
-      if (!(await requireLogin())) return;
-      const prof = await getMyProfile();
-      IS_ADMIN = prof && prof.role==="admin";
-      await renderTopbar("Manage Team", prof);
-      renderNav("team", IS_ADMIN);
-      if (!IS_ADMIN) { document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
-      await load();
+      try {
+        console.log("[team] start");
+        if (!(await requireLogin())) { console.log("[team] not logged in"); return; }
+        console.log("[team] logged in, fetching profile…");
+        const prof = await getMyProfile();
+        console.log("[team] profile:", prof);
+        IS_ADMIN = prof && prof.role==="admin";
+        await renderTopbar("Manage Team", prof);
+        renderNav("team", IS_ADMIN);
+        if (!prof) {
+          document.getElementById("app").innerHTML=`<div class="card"><div class="empty">
+            Couldn't load your profile. Your login may not have a profile row yet.<br><br>
+            Signed-in email is shown at the top — make sure that account exists in the
+            <strong>profiles</strong> table.</div></div>`;
+          return;
+        }
+        if (!IS_ADMIN) {
+          document.getElementById("app").innerHTML=`<div class="card"><div class="empty">
+            <strong>${prof.full_name || "This account"}</strong> is currently role
+            "<strong>${prof.role}</strong>", not admin.<br><br>
+            Run this in Supabase SQL editor:<br>
+            <code style="font-size:12px">update profiles set role='admin' where full_name='${prof.full_name}';</code>
+            <br><br>then reload.</div></div>`;
+          return;
+        }
+        console.log("[team] admin confirmed, loading users…");
+        await load();
+      } catch (e) {
+        console.error("[team] startup error:", e);
+        document.getElementById("app").innerHTML=`<div class="card"><div class="error" style="min-height:auto">
+          Something went wrong starting this page: ${e.message}<br><br>Open the browser console (F12) for details.</div></div>`;
+      }
     })();
 
     // Calls the manage-users Edge Function with the caller's auth token.
     async function callFn(payload) {
       const { data: { session } } = await sb.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-users`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
-          "apikey": SUPABASE_PUBLISHABLE_KEY
-        },
-        body: JSON.stringify(payload)
-      });
-      return res.json();
+      if (!session) return { error: "Not signed in." };
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-users`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+            "apikey": SUPABASE_PUBLISHABLE_KEY
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        if (!res.ok) {
+          // Try to read an error body; fall back to status text
+          let msg = `Server returned ${res.status}`;
+          try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}
+          if (res.status === 404) msg = "The manage-users function isn't deployed yet. Run:  supabase functions deploy manage-users";
+          return { error: msg };
+        }
+        return await res.json();
+      } catch (e) {
+        if (e.name === "AbortError") return { error: "Request timed out. Is the Edge Function deployed?" };
+        return { error: "Couldn't reach the server: " + e.message };
+      }
     }
 
     async function load() {
       const app = document.getElementById("app");
       const r = await callFn({ action: "list" });
+      if (r.error) {
+        app.innerHTML = `<div class="card">
+          <h2 class="section" style="margin-top:0">Team management isn't ready yet</h2>
+          <div class="error" style="min-height:auto">${r.error}</div>
+          <p class="muted">This screen needs the <strong>manage-users</strong> Edge Function deployed to Supabase.
+          From the project folder, run:</p>
+          <div style="background:#f0ede8;border-left:3px solid var(--brown);padding:10px 12px;font-family:monospace;font-size:13px;border-radius:6px">
+            supabase login<br>
+            supabase link --project-ref hdyyffeameoxocwvirdl<br>
+            supabase functions deploy manage-users
+          </div>
+          <p class="muted" style="margin-top:12px">Until then, you can still add users and set roles directly in the
+          Supabase dashboard (Authentication → Users, then the SQL for roles).</p>
+        </div>`;
+        return;
+      }
       const users = r.users || [];
 
       let html = `<h2 class="section">Add a team member</h2>

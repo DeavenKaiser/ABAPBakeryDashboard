@@ -18,6 +18,25 @@ function renderNav(active, isAdmin) {
        <span class="ico">${t.ico}</span>${t.label}
      </a>`).join("");
   document.body.appendChild(nav);
+
+  // Admin-only: badge the Inventory tab with how many items are below threshold.
+  if (isAdmin) addBelowBadge();
+}
+
+async function addBelowBadge() {
+  try {
+    const { data } = await sb.from("inventory_items").select("current_on_hand,threshold");
+    const below = (data||[]).filter(i =>
+      i.current_on_hand != null && i.threshold != null && Number(i.current_on_hand) < Number(i.threshold)).length;
+    if (!below) return;
+    const link = document.querySelector('nav.tabs a[href="inventory.html"]');
+    if (link) {
+      const b = document.createElement("span");
+      b.className = "nav-badge";
+      b.textContent = below;
+      link.appendChild(b);
+    }
+  } catch (e) { /* ignore */ }
 }
 
 async function renderTopbar(title, prof) {

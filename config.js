@@ -27,8 +27,9 @@ async function requireLogin() {
 async function getMyProfile() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return null;
-  const { data } = await sb.from("profiles").select("*").eq("id", user.id).single();
-  return data;
+  const { data, error } = await sb.from("profiles").select("*").eq("id", user.id).maybeSingle();
+  if (error) { console.error("getMyProfile error:", error); return null; }
+  return data;  // null if no profile row exists yet
 }
 
 // Period keys — how "done this period" is calculated.

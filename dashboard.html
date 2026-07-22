@@ -62,6 +62,12 @@
       const app = document.getElementById("app");
       let html = "";
 
+      // ----- Shift handoff note (read-only banner, everyone) -----
+      const { data: note } = await sb.from("shift_note").select("body").eq("id",1).single();
+      if (note && note.body && note.body.trim()) {
+        html += `<div class="handoff-banner"><span class="lbl">Shift note</span><br>${note.body.replace(/</g,"&lt;")}</div>`;
+      }
+
       // ----- Shared shift progress (everyone sees this) -----
       const { data: shiftTasks } = await sb.from("tasks")
         .select("*").eq("owner","shared").eq("frequency","each_shift").eq("active",true);

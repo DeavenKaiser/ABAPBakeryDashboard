@@ -148,3 +148,40 @@ table.rpt td.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (min-width: 700px) {
   .count-num { width: 110px !important; }
 }
+
+/* ============ v3: toggle buttons, handoff note, alerts ============ */
+
+/* Order Extra / Counted as real toggle buttons */
+.tbtn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: none; border-radius: 10px; padding: 9px 16px; margin: 6px 8px 0 0;
+  font-size: 13px; font-weight: 700; background: #ece5da; color: #6b5d4a;
+  transition: all .12s; -webkit-appearance: none;
+}
+.tbtn:active { transform: scale(.96); }
+.tbtn.on.counted { background: var(--green); color: #fff; }
+.tbtn.on.extra   { background: var(--brown); color: #fff; }
+.tbtn .dot { font-size: 14px; line-height: 1; }
+
+/* Shift handoff note */
+.handoff textarea {
+  width: 100%; min-height: 70px; resize: vertical; font-size: 15px;
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+  font-family: inherit; background: #fffdf9;
+}
+.handoff .saved { font-size: 12px; color: var(--green); font-weight: 700; height: 16px; }
+.handoff-banner {
+  background: #fff8e8; border: 1px solid #e8d9a8; border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 14px; font-size: 15px; line-height: 1.4;
+}
+.handoff-banner .lbl { font-size: 11px; font-weight: 800; color: #a07d2c; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Alert badge on nav */
+.nav-badge {
+  position: absolute; top: 2px; right: 50%; transform: translateX(18px);
+  background: var(--red); color: #fff; font-size: 10px; font-weight: 800;
+  min-width: 17px; height: 17px; border-radius: 10px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+nav.tabs a { position: relative; }
+.freshness { font-size: 11px; color: #a99; margin-top: 3px; }
