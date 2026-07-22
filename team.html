@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Manage Team</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body>
+  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    let IS_ADMIN=false;
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Manage Team", prof);
+      renderNav("team", IS_ADMIN);
+      if (!IS_ADMIN) { document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
+      await load();
+    })();
+
+    // Calls the manage-users Edge Function with the caller's auth token.
+    async function callFn(payload) {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+          "apikey": SUPABASE_PUBLISHABLE_KEY
+        },
+        body: JSON.stringify(payload)
+      });
+      return res.json();
+    }
+
+    async function load() {
+      const app = document.getElementById("app");
+      const r = await callFn({ action: "list" });
+      const users = r.users || [];
+
+      let html = `<h2 class="section">Add a team member</h2>
+        <div class="card">
+          <div class="field"><label>Full name (include Sierra/Mackenzie/Marilyn to link their tasks)</label>
+            <input type="text" id="nName" placeholder="e.g. Sierra"></div>
+          <div class="field"><label>Email</label><input type="email" id="nEmail" placeholder="sierra@abapbakery.com"></div>
+          <div class="field"><label>Temporary password</label><input type="text" id="nPass" placeholder="at least 6 characters"></div>
+          <div class="field"><label>Role</label>
+            <select id="nRole" style="font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);width:100%">
+              <option value="staff">Staff</option><option value="admin">Admin</option>
+            </select></div>
+          <div class="error" id="addErr"></div>
+          <button onclick="addUser()">Add member</button>
+        </div>
+
+        <h2 class="section">Current team (${users.length})</h2><div class="card">`;
+      users.forEach(u => {
+        html += `<div class="row">
+          <div class="txt">${u.full_name} <span class="rolechip">${u.role}</span>
+            <div class="sub">${u.email||""}</div></div>
+          <div style="display:flex;gap:6px">
+            <button class="secondary mini" onclick="toggleRole('${u.id}','${u.role}')">${u.role==="admin"?"Make staff":"Make admin"}</button>
+            <button class="mini" style="background:var(--red)" onclick="delUser('${u.id}','${(u.full_name||"").replace(/'/g,"")}')">Remove</button>
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+      app.innerHTML = html;
+    }
+
+    async function addUser() {
+      const err = document.getElementById("addErr"); err.textContent="";
+      const full_name=document.getElementById("nName").value.trim();
+      const email=document.getElementById("nEmail").value.trim();
+      const password=document.getElementById("nPass").value;
+      const role=document.getElementById("nRole").value;
+      if (!full_name||!email||!password){ err.textContent="Fill in name, email, and password."; return; }
+      const r = await callFn({ action:"create", full_name, email, password, role });
+      if (r.error){ err.textContent=r.error; return; }
+      await load();
+    }
+    async function toggleRole(id, cur) {
+      await callFn({ action:"set_role", id, role: cur==="admin"?"staff":"admin" });
+      await load();
+    }
+    async function delUser(id, name) {
+      if (!confirm(`Remove ${name}? This deletes their login for good.`)) return;
+      const r = await callFn({ action:"delete", id });
+      if (r.error){ alert(r.error); return; }
+      await load();
+    }
+  </script>
+</body>
+</html>

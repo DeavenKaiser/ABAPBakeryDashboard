@@ -15,23 +15,23 @@
   <script src="config.js"></script>
   <script src="nav.js"></script>
   <script>
-    let ITEMS = [], FILTER = "all";
+    let ITEMS = [], FILTER = "all", IS_ADMIN = false;
 
     (async () => {
       if (!(await requireLogin())) return;
-      await renderTopbar("Inventory");
-      renderNav("inventory");
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role === "admin";
+      await renderTopbar("Inventory", prof);
+      renderNav("inventory", IS_ADMIN);
       await load();
     })();
 
     async function load() {
       const { data } = await sb.from("inventory_items")
-        .select("*")
-        .order("owner").order("category").order("name");
+        .select("*").order("owner").order("category").order("name");
       ITEMS = data || [];
       render();
     }
-
     function isBelow(it) {
       return it.current_on_hand != null && it.threshold != null
              && Number(it.current_on_hand) < Number(it.threshold);
@@ -48,70 +48,58 @@
       const extraN = ITEMS.filter(i => i.order_extra).length;
       const toCount = ITEMS.filter(i => !i.counted_this_week).length;
 
-      let html = `
-        <div class="card">
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${filterBtn("all", "All ("+ITEMS.length+")")}
-            ${filterBtn("below", "Below ("+belowN+")")}
-            ${filterBtn("extra", "Order Extra ("+extraN+")")}
-            ${filterBtn("tocount", "To Count ("+toCount+")")}
-          </div>
-        </div>`;
+      let html = `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${fb("all","All ("+ITEMS.length+")")}
+        ${fb("below","Below ("+belowN+")")}
+        ${fb("extra","Order Extra ("+extraN+")")}
+        ${fb("tocount","To Count ("+toCount+")")}
+      </div></div>`;
 
-      let lastGroup = "";
-      let open = false;
+      let lastGroup = "", open = false;
       list.forEach(it => {
-        const g = it.owner.charAt(0).toUpperCase()+it.owner.slice(1) + " · " + (it.category || "—");
-        if (g !== lastGroup) {
-          if (open) html += `</div>`;
-          html += `<h2 class="section">${g}</h2><div class="card">`;
-          lastGroup = g; open = true;
-        }
+        const g = it.owner.charAt(0).toUpperCase()+it.owner.slice(1)+" · "+(it.category||"—");
+        if (g !== lastGroup) { if (open) html += `</div>`; html += `<h2 class="section">${g}</h2><div class="card">`; lastGroup=g; open=true; }
         const below = isBelow(it);
-        html += `
-          <div class="row ${below ? "below-row" : ""}">
-            <div class="txt">
-              ${it.name}
-              ${below ? '<span class="pill below">BELOW</span>' : ''}
-              ${it.order_extra ? '<span class="pill extra">EXTRA</span>' : ''}
-              <div class="sub">min ${it.min_on_hand ?? "—"} · threshold ${it.threshold ?? "—"} ${it.unit ? "· "+it.unit : ""}</div>
-              <div class="sub">
-                <label style="margin-right:12px"><input type="checkbox" style="width:16px;height:16px;vertical-align:-3px"
-                  ${it.order_extra ? "checked" : ""} onchange="setExtra(${it.id}, this.checked)"> Order extra</label>
-                <label><input type="checkbox" style="width:16px;height:16px;vertical-align:-3px"
-                  ${it.counted_this_week ? "checked" : ""} onchange="setCounted(${it.id}, this.checked)"> Counted</label>
-              </div>
+        html += `<div class="row ${below?"below-row":""}">
+          <div class="txt">
+            <div style="font-size:15px">${it.name}
+              ${below?'<span class="pill below">BELOW</span>':''}
+              ${it.order_extra?'<span class="pill extra">EXTRA</span>':''}</div>
+            <div class="sub">min ${it.min_on_hand??"—"} · threshold ${it.threshold??"—"}${it.unit?" · "+it.unit:""}${IS_ADMIN&&it.unit_cost!=null?` · $${it.unit_cost}/unit`:""}</div>
+            <div style="margin-top:4px">
+              <label class="toggle-chip extra ${it.order_extra?"on":""}">
+                <input type="checkbox" ${it.order_extra?"checked":""} onchange="setExtra(${it.id},this.checked)">
+                <span class="box"></span> Order extra
+              </label>
+              <label class="toggle-chip ${it.counted_this_week?"on":""}">
+                <input type="checkbox" ${it.counted_this_week?"checked":""} onchange="setCounted(${it.id},this.checked)">
+                <span class="box"></span> Counted
+              </label>
+              ${IS_ADMIN?`<label class="toggle-chip" style="cursor:default;border-style:dashed">$
+                <input type="number" step="0.01" value="${it.unit_cost??""}" placeholder="cost"
+                  style="width:70px;border:none;font-size:13px;padding:0 2px" onchange="setCost(${it.id},this.value)">
+              </label>`:""}
             </div>
-            <input type="number" class="count-num" value="${it.current_on_hand ?? ""}"
-                   placeholder="qty" onchange="setCount(${it.id}, this.value)">
-          </div>`;
+          </div>
+          <input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">
+        </div>`;
       });
       if (open) html += `</div>`;
       if (!list.length) html += `<div class="empty">Nothing here.</div>`;
       app.innerHTML = html;
     }
+    function fb(id,label){ return `<button class="${FILTER===id?"":"secondary"}" onclick="FILTER='${id}';render()">${label}</button>`; }
 
-    function filterBtn(id, label) {
-      return `<button class="${FILTER===id?"":"secondary"}" onclick="FILTER='${id}';render()">${label}</button>`;
-    }
-
-    async function setCount(id, val) {
-      const num = val === "" ? null : Number(val);
-      const it = ITEMS.find(i => i.id === id); it.current_on_hand = num;
-      const { data: { user } } = await sb.auth.getUser();
-      await sb.from("inventory_items").update({ current_on_hand: num, updated_at: new Date().toISOString(), updated_by: user.id }).eq("id", id);
+    async function setCount(id,val){
+      const num = val===""?null:Number(val);
+      ITEMS.find(i=>i.id===id).current_on_hand=num;
+      const { data:{user} } = await sb.auth.getUser();
+      await sb.from("inventory_items").update({current_on_hand:num,updated_at:new Date().toISOString(),updated_by:user.id}).eq("id",id);
       render();
     }
-    async function setExtra(id, checked) {
-      const it = ITEMS.find(i => i.id === id); it.order_extra = checked;
-      await sb.from("inventory_items").update({ order_extra: checked }).eq("id", id);
-      render();
-    }
-    async function setCounted(id, checked) {
-      const it = ITEMS.find(i => i.id === id); it.counted_this_week = checked;
-      await sb.from("inventory_items").update({ counted_this_week: checked }).eq("id", id);
-      render();
-    }
+    async function setExtra(id,c){ ITEMS.find(i=>i.id===id).order_extra=c; await sb.from("inventory_items").update({order_extra:c}).eq("id",id); render(); }
+    async function setCounted(id,c){ ITEMS.find(i=>i.id===id).counted_this_week=c; await sb.from("inventory_items").update({counted_this_week:c}).eq("id",id); render(); }
+    async function setCost(id,val){ const n=val===""?null:Number(val); ITEMS.find(i=>i.id===id).unit_cost=n; await sb.from("inventory_items").update({unit_cost:n}).eq("id",id); }
   </script>
 </body>
 </html>

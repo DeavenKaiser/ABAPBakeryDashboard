@@ -16,10 +16,18 @@
   <script src="config.js"></script>
   <script src="nav.js"></script>
   <script>
+    let PROF = null, IS_ADMIN = false, OWNER = null;
+
     (async () => {
       if (!(await requireLogin())) return;
-      await renderTopbar("Dashboard");
-      renderNav("dashboard");
+      PROF = await getMyProfile();
+      IS_ADMIN = PROF && PROF.role === "admin";
+      const name = (PROF?.full_name || "").toLowerCase();
+      if (name.includes("sierra")) OWNER = "sierra";
+      else if (name.includes("mackenzie") || name.includes("kenzie")) OWNER = "mackenzie";
+      else if (name.includes("marilyn")) OWNER = "marilyn";
+      await renderTopbar("Dashboard", PROF);
+      renderNav("dashboard", IS_ADMIN);
       await load();
     })();
 
@@ -28,87 +36,140 @@
              && Number(it.current_on_hand) < Number(it.threshold);
     }
 
-    async function load() {
-      const { data: items } = await sb.from("inventory_items").select("*");
-      const { data: tasks } = await sb.from("tasks").select("*").eq("active", true);
-
-      // completions for current periods
+    async function completionsFor(tasks) {
       const done = new Set();
       for (const f of ["each_shift","daily","weekly","monthly"]) {
-        const pk = periodKey(f);
         const ids = tasks.filter(t => t.frequency === f).map(t => t.id);
         if (!ids.length) continue;
-        const { data: comps } = await sb.from("task_completions")
-          .select("task_id").eq("period_key", pk).in("task_id", ids);
-        (comps || []).forEach(c => done.add(c.task_id));
+        const { data } = await sb.from("task_completions")
+          .select("task_id").eq("period_key", periodKey(f)).in("task_id", ids);
+        (data || []).forEach(c => done.add(c.task_id));
       }
+      return done;
+    }
 
-      // per-owner completion %
-      const owners = ["sierra","mackenzie","marilyn","shared"];
-      const ownerPct = owners.map(o => {
-        const ts = tasks.filter(t => t.owner === o);
-        if (!ts.length) return { o, pct: null, done: 0, total: 0 };
-        const d = ts.filter(t => done.has(t.id)).length;
-        return { o, pct: Math.round(d / ts.length * 100), done: d, total: ts.length };
-      });
+    function progressCard(title, done, total) {
+      const pct = total ? Math.round(done/total*100) : 0;
+      return `<div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <strong>${title}</strong><span class="muted">${done}/${total} · ${pct}%</span>
+        </div>
+        <div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pct}%"></div></div>
+      </div>`;
+    }
 
-      const below = items.filter(isBelow);
-      const extra = items.filter(i => i.order_extra);
-      const toOrder = [...new Set([...below, ...extra])];
-      const inStock = items.length - below.length;
-
+    async function load() {
+      const app = document.getElementById("app");
       let html = "";
 
-      // Order alert banner
-      html += `<div class="card" style="background:${toOrder.length? '#fbeae7':'#e9f2e6'}">
-        <strong style="color:${toOrder.length? 'var(--red)':'var(--green)'}">
-        ${toOrder.length ? `${toOrder.length} item(s) to order` : "Nothing to order right now"}</strong></div>`;
+      // ----- Shared shift progress (everyone sees this) -----
+      const { data: shiftTasks } = await sb.from("tasks")
+        .select("*").eq("owner","shared").eq("frequency","each_shift").eq("active",true);
+      const shiftDone = await completionsFor(shiftTasks || []);
+      const sDone = (shiftTasks||[]).filter(t => shiftDone.has(t.id)).length;
 
-      // Completion cards
-      html += `<h2 class="section">Task completion (this period)</h2><div class="card">`;
-      ownerPct.forEach(op => {
-        if (op.pct === null) return;
-        const label = op.o.charAt(0).toUpperCase()+op.o.slice(1);
-        html += `<div style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;font-size:14px">
-            <span>${label}</span><span class="muted">${op.done}/${op.total} · ${op.pct}%</span>
-          </div>
-          <div class="progress-wrap"><div class="progress-bar" style="width:${op.pct}%"></div></div>
+      // ----- This person's own tasks (everyone sees their own) -----
+      let ownBlock = "";
+      if (OWNER) {
+        const { data: myTasks } = await sb.from("tasks")
+          .select("*").eq("owner",OWNER).eq("active",true);
+        const myDone = await completionsFor(myTasks || []);
+        const mDone = (myTasks||[]).filter(t => myDone.has(t.id)).length;
+        ownBlock = progressCard("My tasks", mDone, (myTasks||[]).length);
+      }
+
+      html += `<div class="grid2">
+        ${progressCard("Full shift (shared)", sDone, (shiftTasks||[]).length)}
+        ${ownBlock}
+      </div>`;
+
+      // ================= STAFF STOP HERE (no money/stats) =================
+      if (!IS_ADMIN) {
+        document.getElementById("app").innerHTML = html;
+        return;
+      }
+
+      // ================= ADMIN: financials, stats, order list =============
+      const { data: items } = await sb.from("inventory_items").select("*");
+      const { data: allTasks } = await sb.from("tasks").select("*").eq("active",true);
+      const allDone = await completionsFor(allTasks || []);
+
+      // per-owner completion
+      html += `<h2 class="section">Team completion (this period)</h2><div class="card">`;
+      ["sierra","mackenzie","marilyn","shared"].forEach(o => {
+        const ts = (allTasks||[]).filter(t => t.owner===o);
+        if (!ts.length) return;
+        const d = ts.filter(t => allDone.has(t.id)).length;
+        const pct = Math.round(d/ts.length*100);
+        const label = o.charAt(0).toUpperCase()+o.slice(1);
+        html += `<div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;font-size:14px"><span>${label}</span><span class="muted">${d}/${ts.length} · ${pct}%</span></div>
+          <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
         </div>`;
       });
       html += `</div>`;
 
-      // Inventory health chart
+      // inventory health + value
+      const below = (items||[]).filter(isBelow);
+      const extra = (items||[]).filter(i => i.order_extra);
+      const inStock = (items||[]).length - below.length;
+      const stockValue = (items||[]).reduce((s,i)=>
+        s + ((i.unit_cost!=null && i.current_on_hand!=null) ? i.unit_cost*i.current_on_hand : 0), 0);
+
       html += `<h2 class="section">Inventory health</h2>
-        <div class="card"><canvas id="invChart" height="160"></canvas></div>`;
-
-      // Items to order list
-      html += `<h2 class="section">Items to order</h2><div class="card">`;
-      if (!toOrder.length) html += `<div class="empty">All stocked.</div>`;
-      toOrder.forEach(it => {
-        html += `<div class="row">
-          <div class="txt">${it.name}
-            <div class="sub">${it.owner} · ${isBelow(it) ? "Below threshold" : "Order extra"}
-              ${it.reorder_note ? "· "+it.reorder_note : ""}</div>
+        <div class="grid2">
+          <div class="card"><canvas id="invChart" height="170"></canvas></div>
+          <div class="card">
+            <div class="muted">Current stock value</div>
+            <div class="big-num">$${stockValue.toFixed(2)}</div>
+            <div class="muted" style="margin-top:8px">${below.length} below threshold · ${extra.length} order extra</div>
+            <a href="reports.html"><button class="mini" style="margin-top:10px">View reports →</button></a>
           </div>
+        </div>`;
+
+      // Items to order — with Ordered button (admin task)
+      const { data: openOrders } = await sb.from("order_log").select("*").eq("status","open");
+      const openByItem = {};
+      (openOrders||[]).forEach(o => openByItem[o.item_id] = o);
+      const toOrder = [...new Set([...below, ...extra])];
+
+      html += `<h2 class="section">Items to order (${toOrder.length})</h2><div class="card" id="orderCard">`;
+      if (!toOrder.length) html += `<div class="empty">Nothing to order right now.</div>`;
+      toOrder.forEach(it => {
+        const ord = openByItem[it.id];
+        const dateStr = ord ? new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "";
+        html += `<div class="row order-row ${ord?"ordered":""}" id="ord-${it.id}">
+          <div class="txt">${it.name}
+            <div class="sub">${it.owner} · ${isBelow(it)?"Below threshold":"Order extra"}${it.reorder_note?" · "+it.reorder_note:""}</div>
+            ${ord?`<div class="order-date">Ordered ${dateStr} — awaiting delivery</div>`:""}
+          </div>
+          ${ord
+            ? `<button class="secondary mini" onclick="unorder(${it.id})">Undo</button>`
+            : `<button class="mini" onclick="markOrdered(${it.id})">Ordered</button>`}
         </div>`;
       });
       html += `</div>`;
 
-      document.getElementById("app").innerHTML = html;
+      app.innerHTML = html;
 
-      // draw chart
       new Chart(document.getElementById("invChart"), {
-        type: "doughnut",
-        data: {
-          labels: ["In stock", "Below threshold", "Order extra"],
-          datasets: [{
-            data: [inStock, below.length, extra.length],
-            backgroundColor: ["#4A7C4E", "#B23A2E", "#D8C3A5"]
-          }]
-        },
-        options: { plugins: { legend: { position: "bottom" } } }
+        type:"doughnut",
+        data:{ labels:["In stock","Below","Order extra"],
+          datasets:[{ data:[inStock, below.length, extra.length],
+            backgroundColor:["#4A7C4E","#B23A2E","#D8C3A5"] }] },
+        options:{ plugins:{ legend:{ position:"bottom" } } }
       });
+    }
+
+    async function markOrdered(itemId) {
+      const { data: { user } } = await sb.auth.getUser();
+      await sb.from("order_log").insert({ item_id: itemId, ordered_by: user.id });
+      await load();
+    }
+    async function unorder(itemId) {
+      // remove the open order (undo an accidental mark)
+      await sb.from("order_log").delete().eq("item_id", itemId).eq("status","open");
+      await load();
     }
   </script>
 </body>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Reports</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body>
+  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    let IS_ADMIN=false;
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Reports", prof);
+      renderNav("reports", IS_ADMIN);
+      if (!IS_ADMIN) { document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
+      await load();
+    })();
+
+    async function load() {
+      const app = document.getElementById("app");
+      // Cost per unit + stock value
+      const { data: costs } = await sb.from("v_item_costs").select("*").order("owner").order("name");
+      // Turnover / RTI
+      const { data: turn } = await sb.from("v_turnover").select("*").order("reorder_count",{ascending:false});
+
+      const totalValue = (costs||[]).reduce((s,c)=>s+(c.stock_value||0),0);
+
+      let html = `<h2 class="section">Inventory value</h2>
+        <div class="card"><div class="muted">Total current stock value</div>
+        <div class="big-num">$${totalValue.toFixed(2)}</div></div>`;
+
+      // Cost per unit table
+      html += `<h2 class="section">Cost per unit</h2><div class="card" style="overflow-x:auto">
+        <table class="rpt"><tr><th>Item</th><th>Owner</th><th class="num">Cost/unit</th><th class="num">On hand</th><th class="num">Stock value</th></tr>`;
+      (costs||[]).forEach(c=>{
+        html += `<tr><td>${c.name}</td><td>${c.owner}</td>
+          <td class="num">${c.unit_cost!=null?"$"+Number(c.unit_cost).toFixed(2):"—"}</td>
+          <td class="num">${c.current_on_hand??"—"}</td>
+          <td class="num">${c.stock_value!=null?"$"+Number(c.stock_value).toFixed(2):"—"}</td></tr>`;
+      });
+      html += `</table></div>`;
+
+      // Turnover / RTI
+      html += `<h2 class="section">Turnover (RTI) — reorder frequency</h2>
+        <div class="card"><div class="muted" style="margin-bottom:8px">How often each item has been reordered. More reorders / fewer days between = used faster.</div>
+        <div style="overflow-x:auto"><table class="rpt"><tr><th>Item</th><th class="num">Reorders</th><th class="num">Avg days between</th><th>Last order</th></tr>`;
+      (turn||[]).filter(t=>t.reorder_count>0).forEach(t=>{
+        html += `<tr><td>${t.name}</td>
+          <td class="num">${t.reorder_count}</td>
+          <td class="num">${t.avg_days_between_orders??"—"}</td>
+          <td>${t.last_order?new Date(t.last_order).toLocaleDateString():"—"}</td></tr>`;
+      });
+      html += `</table></div></div>`;
+
+      // Monthly history
+      html += `<h2 class="section">History</h2>
+        <div class="card">
+          <label class="muted">Month: </label>
+          <input type="month" id="monthPick" value="${new Date().toISOString().slice(0,7)}" onchange="loadMonth(this.value)">
+          <div id="monthOut" style="margin-top:12px"><div class="muted">Pick a month to see counts and orders.</div></div>
+        </div>`;
+
+      app.innerHTML = html;
+      loadMonth(document.getElementById("monthPick").value);
+    }
+
+    async function loadMonth(ym) {
+      const out = document.getElementById("monthOut");
+      out.innerHTML = `<div class="muted">Loading ${ym}…</div>`;
+      const start = ym+"-01";
+      const endDate = new Date(ym+"-01"); endDate.setMonth(endDate.getMonth()+1);
+      const end = endDate.toISOString().slice(0,10);
+
+      // orders that month
+      const { data: orders } = await sb.from("order_log")
+        .select("*, inventory_items(name,owner)")
+        .gte("ordered_at", start).lt("ordered_at", end).order("ordered_at");
+      // task completions that month (by completed_at)
+      const { data: comps } = await sb.from("task_completions")
+        .select("id").gte("completed_at", start).lt("completed_at", end);
+
+      let h = `<div class="grid2">
+        <div class="card"><div class="muted">Orders placed</div><div class="big-num">${(orders||[]).length}</div></div>
+        <div class="card"><div class="muted">Tasks completed</div><div class="big-num">${(comps||[]).length}</div></div>
+      </div>`;
+      if ((orders||[]).length) {
+        h += `<table class="rpt" style="margin-top:10px"><tr><th>Date</th><th>Item</th><th>Owner</th><th>Status</th></tr>`;
+        orders.forEach(o=>{
+          h += `<tr><td>${new Date(o.ordered_at).toLocaleDateString()}</td>
+            <td>${o.inventory_items?.name??"?"}</td><td>${o.inventory_items?.owner??""}</td>
+            <td>${o.status}${o.received_at?" "+new Date(o.received_at).toLocaleDateString():""}</td></tr>`;
+        });
+        h += `</table>`;
+      }
+      out.innerHTML = h;
+    }
+  </script>
+</body>
+</html>

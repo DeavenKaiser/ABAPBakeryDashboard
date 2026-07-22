@@ -23,7 +23,7 @@
     (async () => {
       if (!(await requireLogin())) return;
       await renderTopbar("Shift Checklist");
-      renderNav("shift");
+      renderNav("shift", (await getMyProfile())?.role==="admin");
       await load();
     })();
 

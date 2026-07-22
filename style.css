@@ -88,3 +88,63 @@ nav.tabs a .ico { display: block; font-size: 20px; margin-bottom: 2px; }
 .field label { display: block; font-size: 13px; margin-bottom: 5px; font-weight: 600; }
 .error { color: var(--red); font-size: 14px; margin: 10px 0; min-height: 18px; }
 .empty { text-align: center; color: #8a7d6d; padding: 30px 10px; }
+
+/* ============ v2 additions ============ */
+
+/* Role chip in top bar */
+.rolechip {
+  background: var(--tan); color: var(--dark); font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 20px; margin-left: 4px; vertical-align: middle;
+}
+
+/* Prominent Order Extra / Counted toggle chips */
+.toggle-chip {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 2px solid var(--line); border-radius: 22px; padding: 7px 14px;
+  font-size: 13px; font-weight: 600; margin-right: 8px; margin-top: 6px;
+  background: #fff; user-select: none; transition: all .15s;
+}
+.toggle-chip input { display: none; }
+.toggle-chip.on { border-color: var(--green); background: #e4f0e2; color: var(--green); }
+.toggle-chip.on.extra { border-color: var(--brown); background: var(--light); color: var(--brown); }
+.toggle-chip .box { width: 16px; height: 16px; border-radius: 4px; border: 2px solid currentColor; display: inline-block; position: relative; }
+.toggle-chip.on .box::after { content: "✓"; position: absolute; inset: -4px 0 0 1px; font-size: 13px; }
+
+/* Ordered / struck-through order rows */
+.order-row.ordered .txt { text-decoration: line-through; color: #a99; }
+.order-date { font-size: 11px; color: var(--green); font-weight: 700; }
+button.mini { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+
+/* Report tables */
+table.rpt { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.rpt th, table.rpt td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+table.rpt th { background: var(--tan); font-size: 12px; }
+table.rpt td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ============ Responsive: iPad & desktop ============ */
+@media (min-width: 700px) {
+  .wrap { max-width: 960px; padding: 24px; }
+  /* Two-column card grids where useful */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .grid2 > .card, .grid2 > * { margin-bottom: 0; }
+}
+
+@media (min-width: 1000px) {
+  .wrap { max-width: 1100px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+
+  /* Turn the bottom tab bar into a left side rail on desktop */
+  nav.tabs {
+    top: 0; bottom: 0; right: auto; width: 92px; flex-direction: column;
+    justify-content: flex-start; padding-top: 24px; gap: 6px; border-top: none;
+    border-right: 1px solid var(--line);
+  }
+  nav.tabs a { flex: none; padding: 12px 4px; }
+  body { padding-bottom: 0; padding-left: 92px; }
+  header.topbar { padding-left: 110px; }
+}
+
+/* Larger tap targets already good on mobile; ensure inputs scale on desktop */
+@media (min-width: 700px) {
+  .count-num { width: 110px !important; }
+}

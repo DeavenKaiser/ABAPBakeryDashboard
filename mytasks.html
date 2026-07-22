@@ -22,7 +22,7 @@
     (async () => {
       if (!(await requireLogin())) return;
       await renderTopbar("My Tasks");
-      renderNav("mytasks");
+      renderNav("mytasks", (await getMyProfile())?.role==="admin");
       const prof = await getMyProfile();
       // Decide whose tasks to show: match profile name to an owner keyword.
       const name = (prof?.full_name || "").toLowerCase();
