@@ -50,3 +50,58 @@ async function renderTopbar(title, prof) {
     <button class="secondary" onclick="signOut()" style="padding:8px 12px;font-size:13px">Sign out</button>`;
   document.body.prepend(bar);
 }
+
+// ---- Pull-to-refresh (touch): swipe down at top of page to reload ----
+(function initPullToRefresh(){
+  let startY = 0, pulling = false, indicator = null;
+  const THRESHOLD = 70;
+
+  function ensureIndicator(){
+    if (indicator) return indicator;
+    indicator = document.createElement("div");
+    indicator.style.cssText =
+      "position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:center;"+
+      "height:0;overflow:hidden;background:transparent;color:#6B4F3A;font-size:13px;font-weight:700;"+
+      "z-index:9999;transition:height .15s;pointer-events:none;font-family:sans-serif";
+    indicator.textContent = "↓ Pull to refresh";
+    document.body.appendChild(indicator);
+    return indicator;
+  }
+
+  window.addEventListener("touchstart", (e) => {
+    // don't interfere with an active card drag
+    if (window.__dragging) { pulling = false; return; }
+    // only start a pull if already scrolled to the very top
+    if (window.scrollY <= 0 && e.touches.length === 1) {
+      startY = e.touches[0].clientY;
+      pulling = true;
+    } else {
+      pulling = false;
+    }
+  }, { passive: true });
+
+  window.addEventListener("touchmove", (e) => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 0) {
+      const ind = ensureIndicator();
+      const h = Math.min(dy, THRESHOLD + 20);
+      ind.style.height = h + "px";
+      ind.textContent = dy > THRESHOLD ? "↻ Release to refresh" : "↓ Pull to refresh";
+    }
+  }, { passive: true });
+
+  window.addEventListener("touchend", (e) => {
+    if (!pulling) return;
+    const dy = (e.changedTouches[0].clientY) - startY;
+    const ind = ensureIndicator();
+    if (dy > THRESHOLD) {
+      ind.style.height = "44px";
+      ind.textContent = "↻ Refreshing…";
+      location.reload();
+    } else {
+      ind.style.height = "0px";
+    }
+    pulling = false;
+  }, { passive: true });
+})();

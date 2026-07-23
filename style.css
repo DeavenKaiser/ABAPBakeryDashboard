@@ -219,13 +219,21 @@ nav.tabs a { position: relative; }
 .hero .sub { font-size: 14px; opacity: .85; }
 .hero-ring { flex-shrink: 0; }
 
-/* Metric cards grid */
+/* Metric cards — masonry columns so each card sizes to its OWN content
+   (no more one tall card stretching its neighbors) */
 .grid-dash {
-  display: grid; gap: 14px;
-  grid-template-columns: 1fr;
+  column-gap: 14px;
+  column-count: 1;
 }
-@media (min-width: 620px) { .grid-dash { grid-template-columns: 1fr 1fr; } }
-@media (min-width: 1000px) { .grid-dash { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 620px) { .grid-dash { column-count: 2; } }
+@media (min-width: 1000px) { .grid-dash { column-count: 3; } }
+.grid-dash > .wcard {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  margin-bottom: 14px;
+  display: inline-block;
+  width: 100%;
+}
 
 .wcard {
   background: #fff; border: 1px solid #EADFCB; border-radius: 18px; padding: 18px;

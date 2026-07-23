@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Tasks</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1784835352">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="nav.js"></script>
+  <script src="config.js?v=1784835352"></script>
+  <script src="nav.js?v=1784835352"></script>
   <script>
     let PROF=null, IS_ADMIN=false, MY_ROLE=null, TASKS=[], DONE={}, VIEW_ROLE=null, STATS={};
 
@@ -185,7 +185,13 @@
           const its = smartSort(byFreq[f]);
           const done = its.filter(t=>DONE[t.id]).length;
           const pct = Math.round(done/its.length*100);
-          out += `<h2 class="section">${labelFn(f)} — ${done}/${its.length} (${pct}%)</h2>
+          let invDay = "";
+          if (f === "weekly" && ROLE_DUE_DOW[VIEW_ROLE] != null) {
+            const { days } = taskDue(VIEW_ROLE, "weekly");
+            const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][ROLE_DUE_DOW[VIEW_ROLE]];
+            invDay = ` · <span style="color:var(--honey);font-weight:700">${days<=0?"inventory day is today":`${countdownLabel(days)} to ${dayName}`}</span>`;
+          }
+          out += `<h2 class="section">${labelFn(f)} — ${done}/${its.length} (${pct}%)${invDay}</h2>
             <div class="card">
               <div class="progress-wrap" style="margin-bottom:10px"><div class="progress-bar" style="width:${pct}%"></div></div>
               ${its.map(taskRow).join("")}

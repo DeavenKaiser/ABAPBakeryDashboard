@@ -148,3 +148,9 @@ function countdownLabel(days) {
   if (days === 1) return "due tomorrow";
   return `${days} days`;
 }
+
+// Shared: is an item below its threshold? (single source of truth)
+function isBelow(it){
+  return it && it.current_on_hand != null && it.threshold != null
+    && Number(it.current_on_hand) < Number(it.threshold);
+}

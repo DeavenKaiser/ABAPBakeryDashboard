@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Inventory</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1784835352">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="nav.js"></script>
+  <script src="config.js?v=1784835352"></script>
+  <script src="nav.js?v=1784835352"></script>
   <script>
     let ITEMS = [], FILTER = "all", IS_ADMIN = false, MY_ROLE = null, SCOPE = "mine";
 
@@ -43,12 +43,7 @@
       ITEMS = data || [];
       render();
     }
-    function isBelow(it) {
-      return it.current_on_hand != null && it.threshold != null
-             && Number(it.current_on_hand) < Number(it.threshold);
-    }
-
-    function canEditCount(it) {
+function canEditCount(it) {
       // Only the person whose job_role matches the item's owner may edit its count.
       // Admins can edit any count when in edit mode. 'shared' items: anyone.
       if (IS_ADMIN && editMode()) return true;
@@ -148,7 +143,7 @@
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
             ${canEditCount(it)
               ? `<input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">`
-              : `<div class="count-num" style="text-align:center;color:#a99;border:1px solid var(--line);border-radius:8px;padding:8px 0" title="Only ${roleLabel(it.owner)} can update this count">${it.current_on_hand??"—"} 🔒</div>`}
+              : `<div class="count-num" style="text-align:center;color:#a99;border:1px solid var(--line);border-radius:8px;padding:8px 0" title="Only ${roleLabel(it.owner)} can update this count">${it.current_on_hand??"—"}</div>`}
             ${(IS_ADMIN && editMode())?`<button class="mini" style="background:var(--red);padding:4px 9px;font-size:12px" onclick="delItem(${it.id})">✕ remove</button>`:""}
           </div>
         </div>`;

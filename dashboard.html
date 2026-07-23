@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dashboard</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1784835352">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading your day…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="nav.js"></script>
+  <script src="config.js?v=1784835352"></script>
+  <script src="nav.js?v=1784835352"></script>
   <script>
     // ---------- state ----------
     let PROF=null, IS_ADMIN=false, MY_ROLE=null, DATA={};
@@ -28,10 +28,7 @@
       await loadData();
       renderDash();
     })();
-
-    function isBelow(it){ return it.current_on_hand!=null && it.threshold!=null && Number(it.current_on_hand)<Number(it.threshold); }
-
-    // ---------- one-time data load ----------
+// ---------- one-time data load ----------
     async function loadData() {
       const [{data:items},{data:tasks}] = await Promise.all([
         sb.from("inventory_items").select("*"),
@@ -67,9 +64,37 @@
       if(h<16) return "Good afternoon";
       return "Good evening";
     }
-    function bakeryLine(){
-      const lines=["let's get the ovens going.","fresh start, let's make it a good one.","coffee's on — let's roll.","another batch, another great day.","let's keep the shelves full and the line moving."];
-      return lines[new Date().getDate() % lines.length];
+    // Daily uplifting quote — fetched from a free API, cached for the day,
+    // with a warm local fallback if the network/API is unavailable.
+    const FALLBACK_LINES = [
+      "Fresh start — let's make it a good one.",
+      "Small batches, big heart.",
+      "Every loaf tells a story.",
+      "Good things take time to rise.",
+      "Warm ovens, warm welcomes.",
+      "The secret ingredient is always care.",
+      "Rise, shine, repeat.",
+    ];
+    function fallbackLine(){ return FALLBACK_LINES[new Date().getDate() % FALLBACK_LINES.length]; }
+
+    async function dailyQuote(){
+      const today = new Date().toISOString().slice(0,10);
+      try {
+        const cached = JSON.parse(localStorage.getItem("dailyQuote")||"null");
+        if (cached && cached.date === today) return cached.text;
+      } catch(e){}
+      try {
+        const res = await fetch("https://zenquotes.io/api/today");
+        if (res.ok) {
+          const j = await res.json();
+          if (j && j[0] && j[0].q) {
+            const text = `${j[0].q} — ${j[0].a}`;
+            try { localStorage.setItem("dailyQuote", JSON.stringify({date:today, text})); } catch(e){}
+            return text;
+          }
+        }
+      } catch(e){ /* offline or blocked — use fallback */ }
+      return fallbackLine();
     }
 
     // SVG progress ring
@@ -92,7 +117,7 @@
         const mine = MY_ROLE ? roleTasks(MY_ROLE) : [];
         const p = pctDone(mine);
         const doneN = mine.filter(t=>DATA.done.has(t.id)).length;
-        return { title:"🧁 My tasks today", body:`
+        return { title:"My tasks today", body:`
           <div class="stat-row"><div class="stat-big">${doneN}/${mine.length}</div><div class="stat-label">${p}% done</div></div>
           <div class="progress-wrap" style="margin-top:10px"><div class="progress-bar" style="width:${p}%"></div></div>
           <a href="mytasks.html"><button class="mini" style="margin-top:12px">Go to my tasks →</button></a>` };
@@ -101,27 +126,54 @@
         const shift = DATA.tasks.filter(t=>t.owner==="shared" && t.frequency==="each_shift");
         const p = pctDone(shift);
         const doneN = shift.filter(t=>DATA.done.has(t.id)).length;
-        return { title:"🧹 Shared shift tasks", body:`
+        return { title:"Shared shift tasks", body:`
           <div class="stat-row"><div class="stat-big">${doneN}/${shift.length}</div><div class="stat-label">${p}% this shift</div></div>
           <div class="progress-wrap" style="margin-top:10px"><div class="progress-bar" style="width:${p}%"></div></div>
-          ${p===100?`<div style="margin-top:10px;color:var(--sage);font-weight:700">✨ All shift tasks done — nice work!</div>`:""}` };
+          ${p===100?`<div style="margin-top:10px;color:var(--sage);font-weight:700">All shift tasks done — nice work!</div>`:""}` };
       },
-      handoff: () => ({ title:"📝 Shift note", body:
+      handoff: () => ({ title:"Shift note", body:
         DATA.note && DATA.note.trim()
           ? `<div style="font-size:15px;line-height:1.4;white-space:pre-wrap">${DATA.note.replace(/</g,"&lt;")}</div>
              <a href="mytasks.html"><button class="mini secondary" style="margin-top:10px">Edit note</button></a>`
           : `<div class="empty" style="padding:12px">No note right now.<br><a href="mytasks.html">Leave one for the next shift →</a></div>` }),
       my_inventory: () => {
-        if(!MY_ROLE) return { title:"📦 My inventory", body:`<div class="empty" style="padding:12px">No job role assigned yet.</div>` };
+        if(!MY_ROLE) return { title:"My inventory", body:`<div class="empty" style="padding:12px">No job role assigned yet.</div>` };
         const mine = DATA.items.filter(i=>i.owner===MY_ROLE);
         const low = mine.filter(isBelow);
         const toCount = mine.filter(i=>!i.counted_this_week);
-        return { title:"📦 My inventory", body:`
+        return { title:"My inventory", body:`
           <div style="display:flex;gap:18px;flex-wrap:wrap">
             <div><div class="stat-big" style="font-size:30px">${low.length}</div><div class="stat-label">below threshold</div></div>
             <div><div class="stat-big" style="font-size:30px">${toCount.length}</div><div class="stat-label">left to count</div></div>
           </div>
           <a href="inventory.html"><button class="mini" style="margin-top:12px">Open inventory →</button></a>` };
+      },
+      countdown: () => {
+        // Countdown to inventory day(s). Staff: their own. Admin: all roles that have one.
+        const dayName = d => ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d];
+        function line(role){
+          const dow = ROLE_DUE_DOW[role];
+          if (dow == null) return "";
+          const { days } = taskDue(role, "weekly");
+          const who = roleLabel(role);
+          const txt = days<=0 ? "today!" : `${days} day${days===1?"":"s"} — ${dayName(dow)}`;
+          const color = days<=1 ? "var(--berry)" : "var(--crust)";
+          return `<div class="mini-item">
+            <span style="font-weight:600">${who} inventory</span>
+            <span style="margin-left:auto;color:${color};font-weight:800">${txt}</span></div>`;
+        }
+        let body;
+        if (IS_ADMIN) {
+          body = ["baker","barista"].map(line).join("") || `<div class="empty">No inventory days set.</div>`;
+        } else if (MY_ROLE && ROLE_DUE_DOW[MY_ROLE] != null) {
+          const { days } = taskDue(MY_ROLE, "weekly");
+          const dow = ROLE_DUE_DOW[MY_ROLE];
+          body = `<div class="stat-row"><div class="stat-big" style="font-size:38px">${days<=0?"Today":days}</div>
+            <div class="stat-label">${days<=0?"is your inventory day!":`day${days===1?"":"s"} until ${dayName(dow)} inventory`}</div></div>`;
+        } else {
+          body = `<div class="empty" style="padding:12px">No inventory day for your role.</div>`;
+        }
+        return { title:"Inventory day countdown", body };
       },
       // ---- admin widgets ----
       team_completion: () => {
@@ -133,14 +185,14 @@
             <div style="display:flex;justify-content:space-between;font-size:14px"><span>${label}</span><span class="stat-label">${d}/${ts.length} · ${p}%</span></div>
             <div class="progress-wrap"><div class="progress-bar" style="width:${p}%"></div></div></div>`;
         });
-        return { title:"👥 Team completion", body: rows||`<div class="empty">No tasks.</div>` };
+        return { title:"Team completion", body: rows||`<div class="empty">No tasks.</div>` };
       },
       inventory_health: () => {
         const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
         const inStock=DATA.items.length-below.length;
-        return { title:"🥧 Inventory health", body:`
-          <div class="ring-wrap"><canvas id="healthPie" width="200" height="200" style="max-width:200px"></canvas></div>
-          <div style="display:flex;justify-content:center;gap:14px;margin-top:6px;flex-wrap:wrap;font-size:13px">
+        return { title:"Inventory health", body:`
+          <div class="ring-wrap" style="max-width:180px;margin:0 auto"><canvas id="healthPie" width="180" height="180" style="width:180px;height:180px"></canvas></div>
+          <div style="display:flex;justify-content:center;gap:14px;margin-top:10px;flex-wrap:wrap;font-size:13px">
             <span class="clickable" onclick="location.href='inventory.html'"><span class="dot-tag" style="background:var(--sage);display:inline-block"></span> In stock ${inStock}</span>
             <span class="clickable" onclick="location.href='inventory.html?filter=below'"><span class="dot-tag" style="background:var(--berry);display:inline-block"></span> Below ${below.length}</span>
             <span class="clickable" onclick="location.href='inventory.html?filter=extra'"><span class="dot-tag" style="background:var(--honey);display:inline-block"></span> Order extra ${extra.length}</span>
@@ -149,7 +201,7 @@
       },
       stock_value: () => {
         const val=DATA.items.reduce((s,i)=>s+((i.unit_cost!=null&&i.current_on_hand!=null)?i.unit_cost*i.current_on_hand:0),0);
-        return { title:"💰 Stock value", body:`
+        return { title:" Stock value", body:`
           <div class="stat-big">$${val.toFixed(2)}</div><div class="stat-label">current inventory on hand</div>
           <a href="reports.html"><button class="mini" style="margin-top:12px">Full reports →</button></a>` };
       },
@@ -157,7 +209,7 @@
         const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
         const toOrder=[...new Set([...below,...extra])];
         let body="";
-        if(!toOrder.length) body=`<div class="empty" style="padding:12px">Nothing to order — shelves look good. 🎉</div>`;
+        if(!toOrder.length) body=`<div class="empty" style="padding:12px">Nothing to order — shelves look good.</div>`;
         else body=toOrder.map(it=>{
           const ord=DATA.orders[it.id];
           const isOpen=ord&&ord.status==="open";
@@ -167,28 +219,28 @@
             <span class="dot-tag" style="background:${isBelow(it)?'var(--berry)':'var(--honey)'};margin-top:6px"></span>
             <div style="flex:1">
               <span style="${isOpen?'text-decoration:line-through;color:#aaa':''}">${it.name}</span>
-              <div class="stat-label">${isBelow(it)?"below threshold":"order extra"}${isOpen?` · ordered ${dateStr}`:""}${needs?` · ⚠ still below`:""}</div>
+              <div class="stat-label">${isBelow(it)?"below threshold":"order extra"}${isOpen?` · ordered ${dateStr}`:""}${needs?` ·  still below`:""}</div>
             </div>
             ${isOpen
               ? `<button class="mini secondary" style="padding:5px 10px" onclick="unorderItem(${it.id})">Undo</button>`
               : `<button class="mini" style="padding:5px 10px" onclick="orderItem(${it.id})">Ordered</button>`}
           </div>`;
         }).join("");
-        return { title:"🛒 Shopping cart", body };
+        return { title:"Shopping cart", body };
       },
       predict: () => {
-        return { title:"🔮 Likely to order soon", body:`<div id="predictBody"><div class="stat-label">Loading estimate…</div></div>` };
+        return { title:"Likely to order soon", body:`<div id="predictBody"><div class="stat-label">Loading estimate…</div></div>` };
       },
     };
 
     // Which widgets each role sees by default
     const DEFAULT_LAYOUT = {
-      staff: ["my_progress","shift_progress","handoff","my_inventory"],
+      staff: ["my_progress","countdown","shift_progress","handoff","my_inventory"],
       admin: ["team_completion","inventory_health","to_order","stock_value","predict","handoff"],
     };
     const ALL_FOR = {
-      staff: ["my_progress","shift_progress","handoff","my_inventory"],
-      admin: ["team_completion","inventory_health","to_order","stock_value","predict","handoff","shift_progress"],
+      staff: ["my_progress","countdown","shift_progress","handoff","my_inventory"],
+      admin: ["team_completion","inventory_health","to_order","stock_value","predict","handoff","shift_progress","countdown"],
     };
 
     function layoutKey(){ return `dashLayout_${IS_ADMIN?'admin':'staff'}_${PROF.id}`; }
@@ -210,7 +262,7 @@
       let html = `<div class="hero">
         <div>
           <h1>${greeting()}, ${firstName}</h1>
-          <div class="sub">${bakeryLine()}</div>
+          <div class="sub" id="quoteLine">${fallbackLine()}</div>
         </div>
         ${ring(focusPct)}
       </div>`;
@@ -227,7 +279,7 @@
       const hidden=all.filter(w=>!layout.includes(w));
       if(hidden.length){
         html+=`<div class="tray"><span class="stat-label">Add a card:</span> `+
-          hidden.map(w=>`<span class="tray-chip" onclick="addWidget('${w}')">＋ ${WIDGETS[w]().title}</span>`).join("")+`</div>`;
+          hidden.map(w=>`<span class="tray-chip" onclick="addWidget('${w}')">+ ${WIDGETS[w]().title}</span>`).join("")+`</div>`;
       }
 
       // grid
@@ -238,7 +290,7 @@
         html += `<div class="wcard" draggable="false" data-w="${w}">
           <h3>${title}
             <span class="grip" title="Drag to move" onpointerdown="startDrag(event,'${w}')">⠿</span>
-            <button class="wremove" title="Remove card" onclick="removeWidget('${w}')">✕</button>
+            <button class="wremove" title="Remove card" onclick="removeWidget('${w}')"></button>
           </h3>
           <div class="wbody">${body}</div>
         </div>`;
@@ -249,6 +301,8 @@
       // post-render: charts + async widgets
       if(layout.includes("inventory_health")) drawHealthPie();
       if(layout.includes("predict")) loadPredict();
+      // async: swap in the daily quote once it arrives
+      dailyQuote().then(q => { const el=document.getElementById("quoteLine"); if(el&&q) el.textContent=q; });
     }
 
     // ---------- charts ----------
@@ -301,6 +355,7 @@
     let dragW=null, dragEl=null;
     function startDrag(e, w){
       e.preventDefault();
+      window.__dragging = true;
       dragW=w; dragEl=e.target.closest(".wcard"); dragEl.classList.add("dragging");
       document.addEventListener("pointermove", onDragMove);
       document.addEventListener("pointerup", endDrag, {once:true});
@@ -320,6 +375,7 @@
     function endDrag(){
       document.removeEventListener("pointermove", onDragMove);
       if(dragEl) dragEl.classList.remove("dragging");
+      window.__dragging = false;
       document.querySelectorAll(".drag-over").forEach(c=>c.classList.remove("drag-over"));
       // persist new order
       const order=[...document.querySelectorAll("#grid .wcard")].map(c=>c.dataset.w);
