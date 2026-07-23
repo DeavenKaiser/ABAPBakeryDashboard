@@ -15,7 +15,7 @@
   <script src="config.js"></script>
   <script src="nav.js"></script>
   <script>
-    let PROF=null, IS_ADMIN=false, MY_ROLE=null, TASKS=[], DONE={}, VIEW_ROLE=null;
+    let PROF=null, IS_ADMIN=false, MY_ROLE=null, TASKS=[], DONE={}, VIEW_ROLE=null, STATS={};
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -57,6 +57,14 @@
           .select("task_id").eq("period_key", pk).in("task_id", ids.length?ids:[-1]);
         (comps||[]).forEach(c => DONE[c.task_id]=true);
       }
+
+      // Completion reliability (for smart ordering in staff view)
+      STATS = {};
+      const { data: stats } = await sb.from("v_task_stats").select("*");
+      (stats||[]).forEach(s => {
+        STATS[s.task_id] = s.expected_60d > 0 ? (s.completions_60d / s.expected_60d) : 1;
+      });
+
       render();
       loadNote();
     }
@@ -142,9 +150,12 @@
 
       function taskRow(t) {
         const d = DONE[t.id];
+        const { days } = taskDue(t.owner, t.frequency);
+        const overdue = days <= 0 && !d;
+        const cd = `<span class="freshness" style="${overdue?'color:var(--red);font-weight:700':''}">${countdownLabel(days)}</span>`;
         return `<div class="row ${d?"done":""}">
           <input type="checkbox" ${d?"checked":""} onchange="toggle(${t.id},'${t.frequency}',this.checked)">
-          <div class="txt">${t.text}${t.area?`<div class="sub">${t.area}</div>`:""}</div>
+          <div class="txt">${t.text}${t.area?`<div class="sub">${t.area}</div>`:""}${!d?cd:""}</div>
           ${(IS_ADMIN && editMode())?`<div style="display:flex;gap:4px;align-items:center">
             <select onchange="reassign(${t.id},this.value)" style="font-size:12px;padding:5px;border-radius:6px;border:1px solid var(--line)">
               ${[...ROLES,"shared"].map(r=>`<option value="${r}" ${t.owner===r?"selected":""}>${roleLabel(r)}</option>`).join("")}
@@ -153,13 +164,25 @@
           </div>`:""}
         </div>`;
       }
+      // Smart ordering (staff view only): not-done first, then lowest completion
+      // reliability, then sooner due date. Admins keep the plain sort_order.
+      function smartSort(items) {
+        if (IS_ADMIN) return items;
+        return items.slice().sort((a,b) => {
+          const ad = DONE[a.id]?1:0, bd = DONE[b.id]?1:0;
+          if (ad !== bd) return ad - bd;                       // not-done (0) first
+          const ar = STATS[a.id] ?? 1, br = STATS[b.id] ?? 1;
+          if (ar !== br) return ar - br;                       // lower reliability first
+          return taskDue(a.owner,a.frequency).days - taskDue(b.owner,b.frequency).days;
+        });
+      }
       function freqSection(items, labelFn) {
         const byFreq = {};
         items.forEach(t => (byFreq[t.frequency] ||= []).push(t));
         let out = "";
         ["each_shift","daily","weekly","monthly"].forEach(f => {
           if (!byFreq[f]) return;
-          const its = byFreq[f];
+          const its = smartSort(byFreq[f]);
           const done = its.filter(t=>DONE[t.id]).length;
           const pct = Math.round(done/its.length*100);
           out += `<h2 class="section">${labelFn(f)} — ${done}/${its.length} (${pct}%)</h2>

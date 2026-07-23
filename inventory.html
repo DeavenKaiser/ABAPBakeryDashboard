@@ -15,12 +15,15 @@
   <script src="config.js"></script>
   <script src="nav.js"></script>
   <script>
-    let ITEMS = [], FILTER = "all", IS_ADMIN = false;
+    let ITEMS = [], FILTER = "all", IS_ADMIN = false, MY_ROLE = null, SCOPE = "mine";
 
     (async () => {
       if (!(await requireLogin())) return;
       const prof = await getMyProfile();
       IS_ADMIN = prof && prof.role === "admin";
+      MY_ROLE = profileJobRole(prof);   // baker / barista / cleaning (or null)
+      // Admins default to All; staff default to My Items (if they have a role)
+      SCOPE = IS_ADMIN ? "all" : (MY_ROLE ? "mine" : "all");
       await renderTopbar("Inventory", prof);
       renderNav("inventory", IS_ADMIN);
       await load();
@@ -39,22 +42,46 @@
              && Number(it.current_on_hand) < Number(it.threshold);
     }
 
+    function canEditCount(it) {
+      // Only the person whose job_role matches the item's owner may edit its count.
+      // Admins can edit any count when in edit mode. 'shared' items: anyone.
+      if (IS_ADMIN && editMode()) return true;
+      if (it.owner === "shared") return true;
+      return MY_ROLE && it.owner === MY_ROLE;
+    }
+
     function render() {
       const app = document.getElementById("app");
       let list = ITEMS.slice();
+
+      // Scope: My Items vs All Inventory
+      if (SCOPE === "mine" && MY_ROLE) {
+        list = list.filter(i => i.owner === MY_ROLE);
+      }
+
       if (FILTER === "below") list = list.filter(isBelow);
       else if (FILTER === "extra") list = list.filter(i => i.order_extra);
       else if (FILTER === "tocount") list = list.filter(i => !i.counted_this_week);
 
-      const belowN = ITEMS.filter(isBelow).length;
-      const extraN = ITEMS.filter(i => i.order_extra).length;
+      const belowN = list.filter(isBelow).length;
+      const extraN = list.filter(i => i.order_extra).length;
       const toCount = ITEMS.filter(i => !i.counted_this_week).length;
 
-      let html = `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${fb("all","All ("+ITEMS.length+")")}
+      let html = "";
+      // Scope tabs (only meaningful if the person has a role)
+      if (MY_ROLE || IS_ADMIN) {
+        const mineLabel = MY_ROLE ? `My Items (${roleLabel(MY_ROLE)})` : "My Items";
+        html += `<div class="card"><div style="display:flex;gap:8px">
+          <button class="${SCOPE==='mine'?'':'secondary'}" onclick="SCOPE='mine';render()" ${!MY_ROLE?'disabled style=\"opacity:.5\"':''}>${mineLabel}</button>
+          <button class="${SCOPE==='all'?'':'secondary'}" onclick="SCOPE='all';render()">All Inventory</button>
+        </div></div>`;
+      }
+
+      html += `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${fb("all","All ("+list.length+")")}
         ${fb("below","Below ("+belowN+")")}
         ${fb("extra","Order Extra ("+extraN+")")}
-        ${fb("tocount","To Count ("+toCount+")")}
+        ${fb("tocount","To Count ("+list.filter(i=>!i.counted_this_week).length+")")}
       </div></div>`;
 
       if (IS_ADMIN) {
@@ -102,15 +129,20 @@
             <div style="margin-top:4px">
               <button class="tbtn extra ${it.order_extra?"on":""}" onclick="setExtra(${it.id}, ${!it.order_extra})">
                 <span class="dot">${it.order_extra?"●":"○"}</span> Order extra</button>
-              <button class="tbtn counted ${it.counted_this_week?"on":""}" onclick="setCounted(${it.id}, ${!it.counted_this_week})">
-                <span class="dot">${it.counted_this_week?"✓":"○"}</span> Counted</button>
+              ${canEditCount(it)
+                ? `<button class="tbtn counted ${it.counted_this_week?"on":""}" onclick="setCounted(${it.id}, ${!it.counted_this_week})">
+                     <span class="dot">${it.counted_this_week?"✓":"○"}</span> Counted</button>`
+                : `<span class="tbtn ${it.counted_this_week?"on counted":""}" style="opacity:.6;cursor:not-allowed">
+                     <span class="dot">${it.counted_this_week?"✓":"○"}</span> Counted</span>`}
               ${(IS_ADMIN && editMode())?`<span class="tbtn" style="cursor:default;background:#f2ede4">$ <input type="number" step="0.01" value="${it.unit_cost??""}" placeholder="cost"
                   style="width:64px;border:none;background:transparent;font-size:13px;font-weight:700;padding:0 2px" onchange="setCost(${it.id},this.value)"></span>`:""}
             </div>
             ${fresh}
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-            <input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">
+            ${canEditCount(it)
+              ? `<input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">`
+              : `<div class="count-num" style="text-align:center;color:#a99;border:1px solid var(--line);border-radius:8px;padding:8px 0" title="Only ${roleLabel(it.owner)} can update this count">${it.current_on_hand??"—"} 🔒</div>`}
             ${(IS_ADMIN && editMode())?`<button class="mini" style="background:var(--red);padding:4px 9px;font-size:12px" onclick="delItem(${it.id})">✕ remove</button>`:""}
           </div>
         </div>`;
@@ -122,16 +154,16 @@
     function fb(id,label){ return `<button class="${FILTER===id?"":"secondary"}" onclick="FILTER='${id}';render()">${label}</button>`; }
 
     async function setCount(id,val){
-      const num = val===""?null:Number(val);
-      const it=ITEMS.find(i=>i.id===id); it.current_on_hand=num;
+      const it=ITEMS.find(i=>i.id===id);
+      if(!canEditCount(it)) return;   // guard
+      const num = val===""?null:Number(val); it.current_on_hand=num;
       const { data:{user} } = await sb.auth.getUser();
       it.updated_at=new Date().toISOString();
       await sb.from("inventory_items").update({current_on_hand:num,updated_at:it.updated_at,updated_by:user.id}).eq("id",id);
-      // refresh so admin freshness + below badges update
       await load();
     }
     async function setExtra(id,on){ const it=ITEMS.find(i=>i.id===id); it.order_extra=on; await sb.from("inventory_items").update({order_extra:on}).eq("id",id); render(); }
-    async function setCounted(id,on){ const it=ITEMS.find(i=>i.id===id); it.counted_this_week=on; await sb.from("inventory_items").update({counted_this_week:on}).eq("id",id); render(); }
+    async function setCounted(id,on){ const it=ITEMS.find(i=>i.id===id); if(!canEditCount(it)) return; it.counted_this_week=on; await sb.from("inventory_items").update({counted_this_week:on}).eq("id",id); render(); }
     async function setCost(id,val){ const n=val===""?null:Number(val); ITEMS.find(i=>i.id===id).unit_cost=n; await sb.from("inventory_items").update({unit_cost:n}).eq("id",id); }
 
     async function addItem(){

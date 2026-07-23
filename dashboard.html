@@ -190,6 +190,43 @@
       });
       html += `</div>`;
 
+      // ---- Predictive: likely to need ordering within ~7 days ----
+      const { data: proj } = await sb.from("v_order_projection").select("*");
+      const soon = (proj||[])
+        .filter(p => p.days_to_threshold != null && p.days_to_threshold >= 0 && p.days_to_threshold <= 7)
+        .filter(p => !toOrder.find(t => t.id === p.id))
+        .sort((a,b) => a.days_to_threshold - b.days_to_threshold);
+      html += `<h2 class="section">Likely to order soon <span class="muted" style="font-weight:400">(estimated)</span></h2><div class="card">`;
+      if (!soon.length) {
+        html += `<div class="empty">No items projected to run low this week.<br><span class="muted">Estimates improve as more count history builds up.</span></div>`;
+      } else {
+        soon.forEach(p => {
+          html += `<div class="row"><div class="txt">${p.name}
+            <div class="sub">${roleLabel(p.owner)} · ~${p.days_to_threshold} day(s) to threshold · using ~${p.per_day_use}/day</div>
+          </div></div>`;
+        });
+        html += `<div class="muted" style="margin-top:8px;font-size:12px">Projections from recent usage; they get smarter as history accumulates.</div>`;
+      }
+      html += `</div>`;
+
+      // ---- Task completion reliability (admin decision aid) ----
+      const { data: tstats } = await sb.from("v_task_stats").select("*");
+      if (tstats && tstats.length) {
+        const rows = tstats.map(s => ({ ...s, rate: s.expected_60d>0 ? s.completions_60d/s.expected_60d : 1 }))
+          .sort((a,b) => a.rate - b.rate).slice(0, 12);
+        html += `<h2 class="section">Task completion — needs attention</h2>
+          <div class="card"><div class="muted" style="margin-bottom:8px">Lowest completion over ~60 days. Consider reassigning persistently-missed tasks.</div>
+          <div style="overflow-x:auto"><table class="rpt"><tr><th>Task</th><th>Role</th><th class="num">Done</th><th class="num">Rate</th></tr>`;
+        rows.forEach(s => {
+          const pct = Math.round(s.rate*100);
+          const color = pct < 50 ? "var(--red)" : (pct < 80 ? "#b8860b" : "var(--green)");
+          html += `<tr><td>${s.text}</td><td>${roleLabel(s.owner)}</td>
+            <td class="num">${s.completions_60d}/${s.expected_60d}</td>
+            <td class="num" style="color:${color};font-weight:700">${pct}%</td></tr>`;
+        });
+        html += `</table></div></div>`;
+      }
+
       app.innerHTML = html;
 
       new Chart(document.getElementById("invChart"), {

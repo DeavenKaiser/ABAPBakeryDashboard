@@ -104,3 +104,47 @@ async function nameForRole(role) {
   const hit = Object.values(m).find(p => p.job_role === role);
   return hit ? hit.full_name : roleLabel(role);
 }
+
+// ---- Task due dates & countdowns ----
+// Per-role inventory/task due days:
+//   Baker (Sierra) → Wednesday, Barista (Mackenzie) → Saturday.
+//   Cleaning (Marilyn) → by frequency (daily = today, weekly = end of week,
+//   monthly = end of month). Shared shift = today.
+const ROLE_DUE_DOW = { baker: 3, barista: 6 }; // 0=Sun..6=Sat
+
+function nextDowDate(dow) {
+  const now = new Date();
+  const today = now.getDay();
+  let add = (dow - today + 7) % 7;      // 0 if today is the day
+  const d = new Date(now); d.setHours(23,59,0,0); d.setDate(now.getDate() + add);
+  return d;
+}
+function endOfWeek() { return nextDowDate(0); }      // Sunday end
+function endOfMonth() {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth()+1, 0, 23, 59, 0, 0);
+  return d;
+}
+function endOfToday() { const d = new Date(); d.setHours(23,59,0,0); return d; }
+
+// Return {due: Date, days: int} for a task given owner + frequency.
+function taskDue(owner, frequency) {
+  let due;
+  if (frequency === "monthly") due = endOfMonth();
+  else if (frequency === "weekly") {
+    if (ROLE_DUE_DOW[owner] != null) due = nextDowDate(ROLE_DUE_DOW[owner]);
+    else due = endOfWeek();
+  } else {
+    // each_shift / daily
+    due = endOfToday();
+  }
+  const days = Math.ceil((due - new Date()) / 86400000);
+  return { due, days };
+}
+
+// Human countdown label.
+function countdownLabel(days) {
+  if (days <= 0) return "due today";
+  if (days === 1) return "due tomorrow";
+  return `${days} days`;
+}
