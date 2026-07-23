@@ -9,8 +9,7 @@ function renderNav(active, isAdmin) {
     { id: "recipes",   href: "recipes.html",   ico: "❦", label: "Recipes" },
   ];
   if (isAdmin) {
-    tabs.push({ id: "reports", href: "reports.html", ico: "$", label: "Reports" });
-    tabs.push({ id: "team",    href: "team.html",    ico: "☺", label: "Team" });
+    tabs.push({ id: "shopping", href: "shopping.html", ico: "▤", label: "Shopping" });
   }
   const nav = document.createElement("nav");
   nav.className = "tabs";
@@ -18,8 +17,39 @@ function renderNav(active, isAdmin) {
     `<a href="${t.href}" class="${t.id === active ? "active" : ""}">
        <span class="ico">${t.ico}</span>${t.label}
      </a>`).join("");
+
+  // Admin: group the occasional tools (Reports, Team) under a "More" menu
+  if (isAdmin) {
+    const moreActive = (active === "reports" || active === "team") ? "active" : "";
+    const more = document.createElement("a");
+    more.href = "#";
+    more.className = moreActive;
+    more.innerHTML = `<span class="ico">⋯</span>More`;
+    more.onclick = (e) => { e.preventDefault(); toggleMoreMenu(); };
+    nav.appendChild(more);
+  }
   document.body.appendChild(nav);
   if (isAdmin) addBelowBadge();
+}
+
+function toggleMoreMenu() {
+  let menu = document.getElementById("moreMenu");
+  if (menu) { menu.remove(); return; }
+  menu = document.createElement("div");
+  menu.id = "moreMenu";
+  menu.style.cssText =
+    "position:fixed;right:12px;bottom:70px;background:#fff;border:1px solid var(--line);"+
+    "border-radius:14px;box-shadow:0 8px 30px rgba(61,46,35,.18);z-index:50;overflow:hidden;min-width:160px";
+  menu.innerHTML = `
+    <a href="reports.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>$</span> Reports</a>
+    <a href="team.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso)"><span>☺</span> Manage Team</a>`;
+  document.body.appendChild(menu);
+  // close when tapping elsewhere
+  setTimeout(() => {
+    document.addEventListener("click", function closeMenu(e){
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", closeMenu); }
+    });
+  }, 0);
 }
 
 async function addBelowBadge() {

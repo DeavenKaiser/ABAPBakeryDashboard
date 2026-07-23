@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Shopping List</title>
+  <link rel="stylesheet" href="style.css?v=1784837094">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading shopping list…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1784837094"></script>
+  <script src="nav.js?v=1784837094"></script>
+  <script>
+    let IS_ADMIN=false, ITEMS=[], ORDERS={}, FILTER="all";
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Shopping List", prof);
+      renderNav("shopping", IS_ADMIN);
+      if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
+      await load();
+    })();
+
+    async function load() {
+      const [{data:items},{data:orders}] = await Promise.all([
+        sb.from("inventory_items").select("*"),
+        sb.from("order_log").select("*").in("status",["open","needs_reorder"]),
+      ]);
+      ITEMS = items||[];
+      ORDERS = {}; (orders||[]).forEach(o=>ORDERS[o.item_id]=o);
+      render();
+    }
+
+    function toOrderList(){
+      const below=ITEMS.filter(isBelow), extra=ITEMS.filter(i=>i.order_extra);
+      return [...new Set([...below,...extra])];
+    }
+
+    function render(){
+      const app=document.getElementById("app");
+      let list = toOrderList();
+      const total=list.length;
+      const orderedN=list.filter(it=>ORDERS[it.id]&&ORDERS[it.id].status==="open").length;
+      const needsN=list.filter(it=>ORDERS[it.id]&&ORDERS[it.id].status==="needs_reorder").length;
+      const notYet=total-orderedN;
+
+      if(FILTER==="below") list=list.filter(isBelow);
+      else if(FILTER==="extra") list=list.filter(i=>i.order_extra);
+      else if(FILTER==="ordered") list=list.filter(it=>ORDERS[it.id]&&ORDERS[it.id].status==="open");
+      else if(FILTER==="needs") list=list.filter(it=>ORDERS[it.id]&&ORDERS[it.id].status==="needs_reorder");
+
+      let html=`<div class="hero" style="padding:18px 22px">
+        <div><h1 style="font-size:22px">Shopping List</h1>
+        <div class="sub">${total} item${total===1?"":"s"} to order · ${orderedN} ordered · ${notYet} to go</div></div>
+      </div>`;
+
+      if(needsN){
+        html+=`<div class="handoff-banner" style="border-color:var(--berry);background:#fbeae7">
+          <span class="lbl" style="color:var(--berry)">Heads up</span><br>
+          ${needsN} item${needsN===1?"":"s"} ${needsN===1?"was":"were"} counted but ${needsN===1?"is":"are"} still below threshold — ${needsN===1?"it":"they"} may need reordering.</div>`;
+      }
+
+      // filter buttons (inventory-style)
+      html+=`<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${fb("all","All ("+total+")")}
+        ${fb("below","Below ("+ITEMS.filter(isBelow).length+")")}
+        ${fb("extra","Order Extra ("+ITEMS.filter(i=>i.order_extra).length+")")}
+        ${fb("ordered","Ordered ("+orderedN+")")}
+        ${needsN?fb("needs","Needs reorder ("+needsN+")"):""}
+      </div></div>`;
+
+      if(!list.length){
+        html+=`<div class="card"><div class="empty">${total?"Nothing in this filter.":"Nothing to order — shelves look good."}</div></div>`;
+        app.innerHTML=html; return;
+      }
+
+      // group by owner
+      const groups={};
+      list.forEach(it=>{ (groups[it.owner]||=[]).push(it); });
+      Object.keys(groups).sort().forEach(owner=>{
+        html+=`<h2 class="section">${roleLabel(owner)}</h2><div class="card">`;
+        groups[owner].forEach(it=>{
+          const ord=ORDERS[it.id];
+          const isOpen=ord&&ord.status==="open";
+          const needs=ord&&ord.status==="needs_reorder";
+          const dateStr=ord?new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"";
+          html+=`<div class="mini-item" style="align-items:flex-start;padding:10px 0">
+            <span class="dot-tag" style="background:${isBelow(it)?'var(--berry)':'var(--honey)'};margin-top:6px"></span>
+            <div style="flex:1">
+              <span style="font-size:15px;${isOpen?'text-decoration:line-through;color:#aaa':''}">${it.name}</span>
+              <div class="stat-label">${isBelow(it)?"below threshold":"order extra"}${it.current_on_hand!=null?" · have "+it.current_on_hand:""}${it.threshold!=null?" / need "+it.threshold:""}${isOpen?" · ordered "+dateStr:""}</div>
+              ${needs?`<div class="stat-label" style="color:var(--berry);font-weight:700">Counted but still below — needs reordering</div>`:""}
+            </div>
+            ${isOpen
+              ? `<button class="mini secondary" style="padding:6px 12px" onclick="unorderItem(${it.id})">Undo</button>`
+              : `<button class="mini" style="padding:6px 12px" onclick="orderItem(${it.id})">Ordered</button>`}
+          </div>`;
+        });
+        html+=`</div>`;
+      });
+
+      app.innerHTML=html;
+    }
+    function fb(id,label){ return `<button class="${FILTER===id?"":"secondary"}" onclick="FILTER='${id}';render()">${label}</button>`; }
+
+    // fast, optimistic order actions
+    async function orderItem(itemId){
+      const { data:{user} } = await sb.auth.getUser();
+      ORDERS[itemId]={ item_id:itemId, status:"open", ordered_at:new Date().toISOString(), ordered_by:user.id };
+      render();
+      await sb.from("order_log").delete().eq("item_id",itemId).in("status",["open","needs_reorder"]);
+      await sb.from("order_log").insert({ item_id:itemId, ordered_by:user.id });
+    }
+    async function unorderItem(itemId){
+      delete ORDERS[itemId];
+      render();
+      await sb.from("order_log").delete().eq("item_id",itemId).in("status",["open","needs_reorder"]);
+    }
+  </script>
+</body>
+</html>

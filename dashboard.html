@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=1784836253">
+  <link rel="stylesheet" href="style.css?v=1784837094">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading your day…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784836253"></script>
-  <script src="nav.js?v=1784836253"></script>
+  <script src="config.js?v=1784837094"></script>
+  <script src="nav.js?v=1784837094"></script>
   <script>
     // ---------- state ----------
     let PROF=null, IS_ADMIN=false, MY_ROLE=null, DATA={};
@@ -208,25 +208,15 @@
       to_order: () => {
         const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
         const toOrder=[...new Set([...below,...extra])];
-        let body="";
+        const orderedN=toOrder.filter(it=>DATA.orders[it.id]&&DATA.orders[it.id].status==="open").length;
+        const toGo=toOrder.length-orderedN;
+        let body;
         if(!toOrder.length) body=`<div class="empty" style="padding:12px">Nothing to order — shelves look good.</div>`;
-        else body=toOrder.map(it=>{
-          const ord=DATA.orders[it.id];
-          const isOpen=ord&&ord.status==="open";
-          const needs=ord&&ord.status==="needs_reorder";
-          const dateStr=ord?new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"";
-          return `<div class="mini-item" style="align-items:flex-start" data-order="${it.id}">
-            <span class="dot-tag" style="background:${isBelow(it)?'var(--berry)':'var(--honey)'};margin-top:6px"></span>
-            <div style="flex:1">
-              <span style="${isOpen?'text-decoration:line-through;color:#aaa':''}">${it.name}</span>
-              <div class="stat-label">${isBelow(it)?"below threshold":"order extra"}${isOpen?` · ordered ${dateStr}`:""}${needs?` ·  still below`:""}</div>
-            </div>
-            ${isOpen
-              ? `<button class="mini secondary" style="padding:5px 10px" onclick="unorderItem(${it.id})">Undo</button>`
-              : `<button class="mini" style="padding:5px 10px" onclick="orderItem(${it.id})">Ordered</button>`}
-          </div>`;
-        }).join("");
-        return { title:"Shopping cart", body };
+        else body=`
+          <div class="stat-row"><div class="stat-big">${toGo}</div><div class="stat-label">still to order</div></div>
+          <div class="stat-label" style="margin-top:4px">${toOrder.length} total · ${orderedN} already ordered</div>
+          <a href="shopping.html"><button class="mini" style="margin-top:12px">Open shopping list →</button></a>`;
+        return { title:"Shopping list", body };
       },
       predict: () => {
         return { title:"Likely to order soon", body:`<div id="predictBody"><div class="stat-label">Loading estimate…</div></div>` };

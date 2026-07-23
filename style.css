@@ -227,6 +227,7 @@ nav.tabs a { position: relative; }
 }
 @media (min-width: 620px) { .grid-dash { column-count: 2; } }
 @media (min-width: 1000px) { .grid-dash { column-count: 3; } }
+@media (min-width: 1500px) { .grid-dash { column-count: 4; } }
 .grid-dash > .wcard {
   break-inside: avoid;
   -webkit-column-break-inside: avoid;
