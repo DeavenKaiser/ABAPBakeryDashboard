@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipe Book</title>
-  <link rel="stylesheet" href="style.css?v=1784835876">
+  <link rel="stylesheet" href="style.css?v=1784836253">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,10 +12,11 @@
   <div class="wrap" id="app"><div class="empty">Loading recipes…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784835876"></script>
-  <script src="nav.js?v=1784835876"></script>
+  <script src="config.js?v=1784836253"></script>
+  <script src="nav.js?v=1784836253"></script>
   <script>
     let IS_ADMIN=false, RECIPES=[], INGREDIENTS=[], INV={};
+    let CATFILTER="all", SORTBY="name", SEARCH="";
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -28,84 +29,188 @@
 
     async function load() {
       const [{data:recs},{data:ings},{data:inv}] = await Promise.all([
-        sb.from("recipes").select("*").eq("active",true).order("name"),
+        sb.from("recipes").select("*").eq("active",true),
         sb.from("recipe_ingredients").select("*").order("sort_order"),
         sb.from("inventory_items").select("name,current_on_hand,threshold,owner"),
       ]);
       RECIPES = recs||[]; INGREDIENTS = ings||[];
-      // index inventory by lowercased name for matching
       INV = {};
       (inv||[]).forEach(i => { INV[(i.name||"").toLowerCase().trim()] = i; });
       render();
     }
 
     function stockStatus(ingName) {
-      // fuzzy-ish match: exact lowercased, else contains
       const key=(ingName||"").toLowerCase().trim();
       let it = INV[key];
-      if (!it) {
-        // try partial: any inventory name that contains the ingredient word or vice versa
-        const found = Object.keys(INV).find(k => k.includes(key) || key.includes(k));
-        if (found) it = INV[found];
-      }
-      if (!it) return { label:"not tracked", color:"#b0a48f", have:null };
+      if (!it) { const f=Object.keys(INV).find(k=>k.includes(key)||key.includes(k)); if(f) it=INV[f]; }
+      if (!it) return { label:"not tracked", color:"#b0a48f" };
       const below = it.current_on_hand!=null && it.threshold!=null && Number(it.current_on_hand)<Number(it.threshold);
-      if (it.current_on_hand==null) return { label:"in inventory", color:"var(--sage)", have:it };
-      if (below) return { label:"low stock", color:"var(--berry)", have:it };
-      return { label:"in stock", color:"var(--sage)", have:it };
+      if (it.current_on_hand==null) return { label:"in inventory", color:"var(--sage)" };
+      if (below) return { label:"low", color:"var(--berry)" };
+      return { label:"in stock", color:"var(--sage)" };
     }
+
+    function categories(){
+      const set=[...new Set(RECIPES.map(r=>r.category||"Other"))].sort();
+      // put Drinks near the end so bakery items lead
+      return set;
+    }
+    function ingCount(r){ return INGREDIENTS.filter(i=>i.recipe_id===r.id).length; }
+    function recipeCost(r){ return INGREDIENTS.filter(i=>i.recipe_id===r.id).reduce((s,i)=>s+(i.est_cost!=null?Number(i.est_cost):0),0); }
 
     function render() {
       const app=document.getElementById("app");
-      if (!RECIPES.length) { app.innerHTML=`<div class="empty">No recipes yet.</div>`; return; }
 
       let html = `<div class="hero" style="padding:18px 22px">
         <div><h1 style="font-size:22px">Recipe Book</h1>
-        <div class="sub">${RECIPES.length} recipes${IS_ADMIN?" · you can see costs":""}</div></div>
+        <div class="sub">${RECIPES.length} recipes${IS_ADMIN?" · you can see costs & edit":""}</div></div>
       </div>`;
 
-      // search box
-      html += `<div class="card" style="margin-bottom:14px"><input type="text" id="search" placeholder="Search recipes…" oninput="filterList(this.value)"></div>`;
+      // Admin: add recipe button
+      if (IS_ADMIN) {
+        html += `<div style="margin-bottom:12px"><button class="mini" onclick="openEditor()">+ Add recipe</button></div>`;
+      }
 
-      html += `<div id="recipeList">`;
-      RECIPES.forEach(r => html += recipeCard(r));
-      html += `</div>`;
+      // Search
+      html += `<div class="card" style="margin-bottom:12px"><input type="text" id="search" placeholder="Search recipes…" value="${SEARCH}" oninput="SEARCH=this.value;renderList()"></div>`;
+
+      // Category filter row (inventory-style buttons)
+      const cats=categories();
+      html += `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${catBtn("all","All ("+RECIPES.length+")")}
+        ${cats.map(c=>catBtn(c, c+" ("+RECIPES.filter(r=>(r.category||"Other")===c).length+")")).join("")}
+      </div></div>`;
+
+      // Sort row (inventory-style buttons)
+      html += `<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="stat-label" style="margin-right:4px">Sort:</span>
+        ${sortBtn("name","Name A–Z")}
+        ${sortBtn("ingredients","# Ingredients")}
+        ${IS_ADMIN?sortBtn("cost","Cost"):""}
+      </div></div>`;
+
+      html += `<div id="recipeList"></div>`;
       app.innerHTML = html;
+      renderList();
+    }
+
+    function catBtn(id,label){ return `<button class="${CATFILTER===id?"":"secondary"}" onclick="CATFILTER='${id.replace(/'/g,"\\'")}';render()">${label}</button>`; }
+    function sortBtn(id,label){ return `<button class="${SORTBY===id?"":"secondary"}" onclick="SORTBY='${id}';renderList()">${label}</button>`; }
+
+    function renderList(){
+      let list = RECIPES.slice();
+      if (CATFILTER!=="all") list=list.filter(r=>(r.category||"Other")===CATFILTER);
+      if (SEARCH.trim()){ const q=SEARCH.toLowerCase(); list=list.filter(r=>r.name.toLowerCase().includes(q)); }
+      if (SORTBY==="name") list.sort((a,b)=>a.name.localeCompare(b.name));
+      else if (SORTBY==="ingredients") list.sort((a,b)=>ingCount(b)-ingCount(a));
+      else if (SORTBY==="cost") list.sort((a,b)=>recipeCost(b)-recipeCost(a));
+
+      const el=document.getElementById("recipeList");
+      if(!list.length){ el.innerHTML=`<div class="empty">No recipes match.</div>`; return; }
+      el.innerHTML = list.map(recipeCard).join("");
     }
 
     function recipeCard(r) {
       const ings = INGREDIENTS.filter(i => i.recipe_id===r.id);
-      let total = 0; let hasCost=false;
+      let total=0, hasCost=false;
       const rows = ings.map(ing => {
         const st = stockStatus(ing.ingredient);
-        if (ing.est_cost!=null) { total+=Number(ing.est_cost); hasCost=true; }
+        if (ing.est_cost!=null){ total+=Number(ing.est_cost); hasCost=true; }
         const amt = ing.amount!=null ? `${ing.amount} ${ing.unit||""}` : (ing.unit||"");
         return `<div class="mini-item">
           <span class="dot-tag" style="background:${st.color}"></span>
           <span style="flex:1">${ing.ingredient}</span>
           <span class="stat-label" style="min-width:80px;text-align:right">${amt}</span>
-          ${IS_ADMIN && ing.est_cost!=null ? `<span class="stat-label" style="min-width:54px;text-align:right;color:var(--crust)">$${Number(ing.est_cost).toFixed(2)}</span>` : ""}
+          ${IS_ADMIN && ing.est_cost!=null ? `<span class="stat-label" style="min-width:54px;text-align:right;color:var(--crust)">$${Number(ing.est_cost).toFixed(2)}</span>`:""}
         </div>`;
       }).join("");
 
-      return `<div class="wcard recipe-card" data-name="${(r.name||"").toLowerCase()}" style="margin-bottom:12px">
+      return `<div class="wcard recipe-card" style="margin-bottom:12px">
         <details>
-          <summary style="cursor:pointer;font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso)">
-            ${r.name}${IS_ADMIN && hasCost ? ` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}
+          <summary style="cursor:pointer;font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso);display:flex;align-items:center;gap:8px">
+            <span style="flex:1">${r.name} <span class="stat-label" style="font-weight:400">· ${r.category||"Other"}</span>${IS_ADMIN && hasCost?` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}</span>
           </summary>
           <div style="margin-top:10px">
             ${rows||'<div class="empty">No ingredients listed.</div>'}
-            <div class="stat-label" style="margin-top:8px">● in stock · ● low · dot color shows live inventory status</div>
+            <div class="stat-label" style="margin-top:8px">dot shows live inventory: <span style="color:var(--sage)">●</span> in stock · <span style="color:var(--berry)">●</span> low</div>
+            ${IS_ADMIN?`<div style="margin-top:10px;display:flex;gap:8px">
+              <button class="mini secondary" onclick="openEditor(${r.id})">Edit</button>
+              <button class="mini" style="background:var(--berry)" onclick="deleteRecipe(${r.id},'${(r.name||"").replace(/'/g,"")}')">Delete</button>
+            </div>`:""}
           </div>
         </details>
       </div>`;
     }
 
-    function filterList(q) {
-      q=(q||"").toLowerCase();
-      document.querySelectorAll(".recipe-card").forEach(c => {
-        c.style.display = c.dataset.name.includes(q) ? "" : "none";
-      });
+    // ---------- Admin editor (add / edit) ----------
+    function openEditor(id){
+      const editing = id ? RECIPES.find(r=>r.id===id) : null;
+      const ings = id ? INGREDIENTS.filter(i=>i.recipe_id===id) : [];
+      const cats = [...new Set([...categories(),"Bread","Bagels","Cakes","Pastries","Muffins & Loaves","Drinks","Other"])];
+      const overlay=document.createElement("div");
+      overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;z-index:100;padding:20px;overflow:auto";
+      overlay.innerHTML=`<div class="card" style="max-width:520px;width:100%;margin:20px 0">
+        <h2 class="section" style="margin-top:0">${editing?"Edit":"Add"} recipe</h2>
+        <div class="field"><label>Name</label><input type="text" id="rName" value="${editing?editing.name.replace(/"/g,"&quot;"):""}"></div>
+        <div class="field"><label>Category</label>
+          <select id="rCat" style="font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);width:100%">
+            ${cats.map(c=>`<option ${editing&&editing.category===c?"selected":""}>${c}</option>`).join("")}
+          </select></div>
+        <label class="stat-label">Ingredients</label>
+        <div id="ingRows"></div>
+        <button class="mini secondary" style="margin-top:8px" onclick="addIngRow()">+ Add ingredient</button>
+        <div class="error" id="rErr" style="min-height:auto;margin-top:10px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+          <button class="mini secondary" onclick="this.closest('div[style*=fixed]').remove()">Cancel</button>
+          <button class="mini" onclick="saveRecipe(${id||"null"})">Save recipe</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      const wrap=overlay.querySelector("#ingRows");
+      window.__ingWrap=wrap;
+      if(ings.length) ings.forEach(i=>addIngRow(i)); else addIngRow();
+    }
+    function addIngRow(data){
+      const wrap=window.__ingWrap; if(!wrap) return;
+      const row=document.createElement("div");
+      row.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+      row.innerHTML=`
+        <input type="text" placeholder="ingredient" class="ri-name" value="${data?(data.ingredient||"").replace(/"/g,"&quot;"):""}" style="flex:2">
+        <input type="number" step="any" placeholder="amt" class="ri-amt" value="${data&&data.amount!=null?data.amount:""}" style="flex:1">
+        <input type="text" placeholder="unit" class="ri-unit" value="${data?(data.unit||""):""}" style="width:60px">
+        <button class="mini secondary" style="padding:4px 8px" onclick="this.parentElement.remove()">✕</button>`;
+      wrap.appendChild(row);
+    }
+    async function saveRecipe(id){
+      const name=document.getElementById("rName").value.trim();
+      const category=document.getElementById("rCat").value;
+      const err=document.getElementById("rErr");
+      if(!name){ err.textContent="Name is required."; return; }
+      const rows=[...document.querySelectorAll("#ingRows > div")].map((row,idx)=>({
+        ingredient:row.querySelector(".ri-name").value.trim(),
+        amount:row.querySelector(".ri-amt").value===""?null:Number(row.querySelector(".ri-amt").value),
+        unit:row.querySelector(".ri-unit").value.trim()||null,
+        sort_order:idx
+      })).filter(r=>r.ingredient);
+      let recipeId=id;
+      if(id){
+        await sb.from("recipes").update({name,category}).eq("id",id);
+        await sb.from("recipe_ingredients").delete().eq("recipe_id",id);
+      } else {
+        const {data,error}=await sb.from("recipes").insert({name,category}).select().single();
+        if(error){ err.textContent=error.message; return; }
+        recipeId=data.id;
+      }
+      if(rows.length){
+        await sb.from("recipe_ingredients").insert(rows.map(r=>({...r,recipe_id:recipeId})));
+      }
+      document.querySelector("div[style*=fixed]").remove();
+      await load();
+    }
+    async function deleteRecipe(id,name){
+      if(!confirm("Delete recipe: "+name+"?")) return;
+      await sb.from("recipes").delete().eq("id",id);
+      await load();
     }
   </script>
 </body>
