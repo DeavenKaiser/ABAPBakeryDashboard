@@ -100,20 +100,32 @@
       const { data: allTasks } = await sb.from("tasks").select("*").eq("active",true);
       const allDone = await completionsFor(allTasks || []);
 
-      // per-owner completion
-      html += `<h2 class="section">Team completion (this period)</h2><div class="card">`;
-      ["sierra","mackenzie","marilyn","shared"].forEach(o => {
-        const ts = (allTasks||[]).filter(t => t.owner===o);
+      // Per-employee (role) DAILY tasks — collapsible, each with a progress bar
+      html += `<h2 class="section">Daily tasks by employee</h2>`;
+      const dailyFreqs = ["each_shift","daily"];
+      [["baker","Baker"],["barista","Barista"],["cleaning","Cleaning"],["shared","Shared shift"]].forEach(([o,label]) => {
+        const ts = (allTasks||[]).filter(t => t.owner===o && dailyFreqs.includes(t.frequency));
         if (!ts.length) return;
         const d = ts.filter(t => allDone.has(t.id)).length;
         const pct = Math.round(d/ts.length*100);
-        const label = o.charAt(0).toUpperCase()+o.slice(1);
-        html += `<div style="margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;font-size:14px"><span>${label}</span><span class="muted">${d}/${ts.length} · ${pct}%</span></div>
-          <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+        const rowsHtml = ts.map(t =>
+          `<div class="row ${allDone.has(t.id)?"done":""}" style="padding:8px 4px">
+             <span style="width:18px">${allDone.has(t.id)?"✓":"○"}</span>
+             <div class="txt" style="font-size:14px">${t.text}${t.area?` <span class="muted">· ${t.area}</span>`:""}</div>
+           </div>`).join("");
+        html += `<div class="card" style="padding:0;overflow:hidden">
+          <div onclick="toggleGroup('${o}')" style="cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:10px">
+            <span id="caret-${o}" style="transition:transform .15s;font-size:12px;color:var(--brown)">▶</span>
+            <div style="flex:1">
+              <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:600">
+                <span>${label}</span><span class="muted">${d}/${ts.length} · ${pct}%</span>
+              </div>
+              <div class="progress-wrap" style="margin-top:6px"><div class="progress-bar" style="width:${pct}%"></div></div>
+            </div>
+          </div>
+          <div id="group-${o}" style="display:none;padding:0 16px 12px 44px">${rowsHtml}</div>
         </div>`;
       });
-      html += `</div>`;
 
       // inventory health + value
       const below = (items||[]).filter(isBelow);
@@ -134,22 +146,28 @@
         </div>`;
 
       // Items to order — with Ordered button (admin task)
-      const { data: openOrders } = await sb.from("order_log").select("*").eq("status","open");
-      const openByItem = {};
-      (openOrders||[]).forEach(o => openByItem[o.item_id] = o);
+      // Pull both 'open' (grayed, awaiting delivery) and 'needs_reorder'
+      // (was counted but still below → un-gray + notice).
+      const { data: activeOrders } = await sb.from("order_log")
+        .select("*").in("status", ["open","needs_reorder"]);
+      const orderByItem = {};
+      (activeOrders||[]).forEach(o => orderByItem[o.item_id] = o);
       const toOrder = [...new Set([...below, ...extra])];
 
       html += `<h2 class="section">Items to order (${toOrder.length})</h2><div class="card" id="orderCard">`;
       if (!toOrder.length) html += `<div class="empty">Nothing to order right now.</div>`;
       toOrder.forEach(it => {
-        const ord = openByItem[it.id];
+        const ord = orderByItem[it.id];
+        const isOpen = ord && ord.status === "open";              // grayed, awaiting delivery
+        const needsReorder = ord && ord.status === "needs_reorder"; // un-gray + notice
         const dateStr = ord ? new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "";
-        html += `<div class="row order-row ${ord?"ordered":""}" id="ord-${it.id}">
+        html += `<div class="row order-row ${isOpen?"ordered":""}" id="ord-${it.id}">
           <div class="txt">${it.name}
             <div class="sub">${it.owner} · ${isBelow(it)?"Below threshold":"Order extra"}${it.reorder_note?" · "+it.reorder_note:""}</div>
-            ${ord?`<div class="order-date">Ordered ${dateStr} — awaiting delivery</div>`:""}
+            ${isOpen?`<div class="order-date">Ordered ${dateStr} — awaiting delivery</div>`:""}
+            ${needsReorder?`<div class="order-date" style="color:var(--red)">⚠ Counted but still below — needs reordering</div>`:""}
           </div>
-          ${ord
+          ${isOpen
             ? `<button class="secondary mini" onclick="unorder(${it.id})">Undo</button>`
             : `<button class="mini" onclick="markOrdered(${it.id})">Ordered</button>`}
         </div>`;
@@ -167,14 +185,24 @@
       });
     }
 
+    function toggleGroup(o) {
+      const g = document.getElementById("group-"+o);
+      const c = document.getElementById("caret-"+o);
+      const open = g.style.display !== "none";
+      g.style.display = open ? "none" : "block";
+      if (c) c.style.transform = open ? "rotate(0deg)" : "rotate(90deg)";
+    }
+
     async function markOrdered(itemId) {
       const { data: { user } } = await sb.auth.getUser();
+      // clear any prior needs_reorder/open row for this item, then open a fresh order
+      await sb.from("order_log").delete().eq("item_id", itemId).in("status", ["open","needs_reorder"]);
       await sb.from("order_log").insert({ item_id: itemId, ordered_by: user.id });
       await load();
     }
     async function unorder(itemId) {
       // remove the open order (undo an accidental mark)
-      await sb.from("order_log").delete().eq("item_id", itemId).eq("status","open");
+      await sb.from("order_log").delete().eq("item_id", itemId).in("status", ["open","needs_reorder"]);
       await load();
     }
   </script>

@@ -57,6 +57,25 @@
         ${fb("tocount","To Count ("+toCount+")")}
       </div></div>`;
 
+      // Admin: add a new inventory item
+      if (IS_ADMIN) {
+        html += `<div class="card">
+          <div class="field" style="margin-bottom:8px"><label>Add inventory item</label>
+            <input type="text" id="niName" placeholder="Item name"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <select id="niOwner" style="font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
+              <option value="baker">Baker</option><option value="barista">Barista</option>
+              <option value="cleaning">Cleaning</option><option value="shared">Shared</option>
+            </select>
+            <input type="text" id="niCat" placeholder="Category" style="width:120px">
+            <input type="text" id="niUnit" placeholder="Unit" style="width:90px">
+            <input type="number" id="niThresh" placeholder="Threshold" style="width:100px">
+            <button class="mini" onclick="addItem()">Add item</button>
+          </div>
+          <div class="error" id="niErr" style="min-height:auto"></div>
+        </div>`;
+      }
+
       // group by CATEGORY only (no owner name in the header)
       let lastGroup = "", open = false;
       list.forEach(it => {
@@ -85,7 +104,10 @@
             </div>
             ${fresh}
           </div>
-          <input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+            <input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">
+            ${IS_ADMIN?`<button class="mini" style="background:var(--red);padding:4px 9px;font-size:12px" onclick="delItem(${it.id})">✕ remove</button>`:""}
+          </div>
         </div>`;
       });
       if (open) html += `</div>`;
@@ -106,6 +128,26 @@
     async function setExtra(id,on){ const it=ITEMS.find(i=>i.id===id); it.order_extra=on; await sb.from("inventory_items").update({order_extra:on}).eq("id",id); render(); }
     async function setCounted(id,on){ const it=ITEMS.find(i=>i.id===id); it.counted_this_week=on; await sb.from("inventory_items").update({counted_this_week:on}).eq("id",id); render(); }
     async function setCost(id,val){ const n=val===""?null:Number(val); ITEMS.find(i=>i.id===id).unit_cost=n; await sb.from("inventory_items").update({unit_cost:n}).eq("id",id); }
+
+    async function addItem(){
+      const err=document.getElementById("niErr"); err.textContent="";
+      const name=document.getElementById("niName").value.trim();
+      const owner=document.getElementById("niOwner").value;
+      const category=document.getElementById("niCat").value.trim()||null;
+      const unit=document.getElementById("niUnit").value.trim()||null;
+      const tv=document.getElementById("niThresh").value;
+      const threshold=tv===""?null:Number(tv);
+      if(!name){ err.textContent="Enter an item name."; return; }
+      const { error }=await sb.from("inventory_items").insert({name,owner,category,unit,threshold,order_extra:false,counted_this_week:false});
+      if(error){ err.textContent=error.message; return; }
+      await load();
+    }
+    async function delItem(id){
+      const it=ITEMS.find(i=>i.id===id);
+      if(!confirm(`Remove "${it?.name||"this item"}" from inventory?`)) return;
+      await sb.from("inventory_items").delete().eq("id",id);
+      await load();
+    }
   </script>
 </body>
 </html>

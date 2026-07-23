@@ -57,3 +57,20 @@ async function signOut() {
   await sb.auth.signOut();
   window.location.href = "index.html";
 }
+
+// Job-role vocabulary shared across screens.
+const ROLES = ["baker", "barista", "cleaning"];
+const JOB_ROLES = ROLES;  // alias
+const ROLE_LABEL = { baker: "Baker", barista: "Barista", cleaning: "Cleaning", shared: "Shared" };
+function roleLabel(r) { return ROLE_LABEL[r] || (r ? r.charAt(0).toUpperCase() + r.slice(1) : "—"); }
+
+// Which task-set does this profile own? Prefer explicit job_role; fall back to name.
+function profileJobRole(prof) {
+  if (!prof) return null;
+  if (prof.job_role) return prof.job_role;
+  const n = (prof.full_name || "").toLowerCase();
+  if (n.includes("sierra")) return "baker";
+  if (n.includes("mackenzie") || n.includes("kenzie")) return "barista";
+  if (n.includes("marilyn")) return "cleaning";
+  return null;
+}

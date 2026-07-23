@@ -58,7 +58,7 @@
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 12000);
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-users`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/manageUsers`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -106,13 +106,20 @@
 
       let html = `<h2 class="section">Add a team member</h2>
         <div class="card">
-          <div class="field"><label>Full name (include Sierra/Mackenzie/Marilyn to link their tasks)</label>
+          <div class="field"><label>Full name</label>
             <input type="text" id="nName" placeholder="e.g. Sierra"></div>
           <div class="field"><label>Email</label><input type="email" id="nEmail" placeholder="sierra@abapbakery.com"></div>
           <div class="field"><label>Temporary password</label><input type="text" id="nPass" placeholder="at least 6 characters"></div>
-          <div class="field"><label>Role</label>
+          <div class="field"><label>Access role</label>
             <select id="nRole" style="font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);width:100%">
               <option value="staff">Staff</option><option value="admin">Admin</option>
+            </select></div>
+          <div class="field"><label>Job (which task list they own)</label>
+            <select id="nJob" style="font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);width:100%">
+              <option value="">— none —</option>
+              <option value="baker">Baker</option>
+              <option value="barista">Barista</option>
+              <option value="cleaning">Cleaning</option>
             </select></div>
           <div class="error" id="addErr"></div>
           <button onclick="addUser()">Add member</button>
@@ -122,8 +129,18 @@
       users.forEach(u => {
         html += `<div class="row">
           <div class="txt">${u.full_name} <span class="rolechip">${u.role}</span>
-            <div class="sub">${u.email||""}</div></div>
-          <div style="display:flex;gap:6px">
+            <div class="sub">${u.email||""}</div>
+            <div style="margin-top:5px">
+              <label class="sub">Job:
+              <select onchange="setJob('${u.id}',this.value)" style="font-size:12px;padding:4px;border-radius:6px;border:1px solid var(--line)">
+                <option value="" ${!u.job_role?"selected":""}>— none —</option>
+                <option value="baker" ${u.job_role==="baker"?"selected":""}>Baker</option>
+                <option value="barista" ${u.job_role==="barista"?"selected":""}>Barista</option>
+                <option value="cleaning" ${u.job_role==="cleaning"?"selected":""}>Cleaning</option>
+              </select></label>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-direction:column">
             <button class="secondary mini" onclick="toggleRole('${u.id}','${u.role}')">${u.role==="admin"?"Make staff":"Make admin"}</button>
             <button class="mini" style="background:var(--red)" onclick="delUser('${u.id}','${(u.full_name||"").replace(/'/g,"")}')">Remove</button>
           </div>
@@ -139,13 +156,18 @@
       const email=document.getElementById("nEmail").value.trim();
       const password=document.getElementById("nPass").value;
       const role=document.getElementById("nRole").value;
+      const job_role=document.getElementById("nJob").value;
       if (!full_name||!email||!password){ err.textContent="Fill in name, email, and password."; return; }
-      const r = await callFn({ action:"create", full_name, email, password, role });
+      const r = await callFn({ action:"create", full_name, email, password, role, job_role });
       if (r.error){ err.textContent=r.error; return; }
       await load();
     }
     async function toggleRole(id, cur) {
       await callFn({ action:"set_role", id, role: cur==="admin"?"staff":"admin" });
+      await load();
+    }
+    async function setJob(id, job_role) {
+      await callFn({ action:"set_job", id, job_role });
       await load();
     }
     async function delUser(id, name) {

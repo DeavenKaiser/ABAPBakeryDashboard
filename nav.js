@@ -1,10 +1,10 @@
-// Renders the bottom tab bar (mobile) / side rail (wide screens).
-// Order: Dashboard, My Tasks, Shift, Inventory  (+ admin: Reports, Team)
+// Bottom tab bar (mobile) / left rail (desktop).
+// Same order for everyone: Dashboard, Tasks, Inventory.
+// Admin extras appended at the END: Reports, Team.
 function renderNav(active, isAdmin) {
   const tabs = [
     { id: "dashboard", href: "dashboard.html", ico: "◉", label: "Dashboard" },
-    { id: "mytasks",   href: "mytasks.html",   ico: "☰", label: "My Tasks" },
-    { id: "shift",     href: "shift.html",     ico: "✓", label: "Shift" },
+    { id: "mytasks",   href: "mytasks.html",   ico: "☰", label: "Tasks" },
     { id: "inventory", href: "inventory.html", ico: "▦", label: "Inventory" },
   ];
   if (isAdmin) {
@@ -18,8 +18,6 @@ function renderNav(active, isAdmin) {
        <span class="ico">${t.ico}</span>${t.label}
      </a>`).join("");
   document.body.appendChild(nav);
-
-  // Admin-only: badge the Inventory tab with how many items are below threshold.
   if (isAdmin) addBelowBadge();
 }
 
@@ -36,15 +34,14 @@ async function addBelowBadge() {
       b.textContent = below;
       link.appendChild(b);
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {}
 }
 
 async function renderTopbar(title, prof) {
   prof = prof || await getMyProfile();
   const bar = document.createElement("header");
   bar.className = "topbar";
-  const roleTag = prof && prof.role === "admin"
-    ? `<span class="rolechip">admin</span>` : "";
+  const roleTag = prof && prof.role === "admin" ? `<span class="rolechip">admin</span>` : "";
   bar.innerHTML = `
     <div>
       <h1>${title}</h1>

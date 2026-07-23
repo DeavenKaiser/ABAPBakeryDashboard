@@ -15,88 +15,191 @@
   <script src="config.js"></script>
   <script src="nav.js"></script>
   <script>
-    // Map each login to which task-owner they see. Adjust emails after you create users.
-    // Fallback: show tasks matching the person's first name (lowercased) if it's an owner.
-    let OWNER = null, TASKS = [], DONE = {};
+    let PROF=null, IS_ADMIN=false, MY_ROLE=null, TASKS=[], DONE={}, VIEW_ROLE=null;
 
     (async () => {
       if (!(await requireLogin())) return;
-      await renderTopbar("My Tasks");
-      renderNav("mytasks", (await getMyProfile())?.role==="admin");
-      const prof = await getMyProfile();
-      // Decide whose tasks to show: match profile name to an owner keyword.
-      const name = (prof?.full_name || "").toLowerCase();
-      if (name.includes("sierra")) OWNER = "sierra";
-      else if (name.includes("mackenzie") || name.includes("kenzie")) OWNER = "mackenzie";
-      else if (name.includes("marilyn")) OWNER = "marilyn";
+      PROF = await getMyProfile();
+      IS_ADMIN = PROF && PROF.role==="admin";
+      MY_ROLE = PROF && PROF.job_role;   // baker / barista / cleaning
+      await renderTopbar("My Tasks", PROF);
+      renderNav("mytasks", IS_ADMIN);
+      // Admin can view any role's list; staff see their own.
+      VIEW_ROLE = IS_ADMIN ? (MY_ROLE || "baker") : MY_ROLE;
       await load();
     })();
 
     async function load() {
-      if (!OWNER) {
+      if (!VIEW_ROLE) {
         document.getElementById("app").innerHTML =
-          `<div class="card"><div class="empty">Your account isn't linked to a task list yet.<br>
-           An admin can set your name to include Sierra, Mackenzie, or Marilyn.</div></div>`;
+          `<div class="card"><div class="empty">Your account isn't linked to a job yet.<br>
+           An admin can set your job (Baker / Barista / Cleaning) on the Team screen.</div></div>`;
         return;
       }
       const { data: tasks } = await sb.from("tasks")
-        .select("*").eq("owner", OWNER).eq("active", true).order("frequency").order("sort_order");
+        .select("*").eq("owner", VIEW_ROLE).eq("active", true).order("frequency").order("sort_order");
       TASKS = tasks || [];
 
-      // gather completions for all relevant period keys
+      // Everyone also sees the shared shift tasks on this screen (unless an admin is
+      // specifically viewing the 'shared' bucket, which already shows them).
+      if (VIEW_ROLE !== "shared") {
+        const { data: shared } = await sb.from("tasks")
+          .select("*").eq("owner","shared").eq("frequency","each_shift").eq("active",true).order("sort_order");
+        (shared||[]).forEach(t => TASKS.push(t));
+      }
+
       const freqs = [...new Set(TASKS.map(t => t.frequency))];
       DONE = {};
       for (const f of freqs) {
         const pk = periodKey(f);
-        const ids = TASKS.filter(t => t.frequency === f).map(t => t.id);
+        const ids = TASKS.filter(t => t.frequency===f).map(t=>t.id);
         const { data: comps } = await sb.from("task_completions")
-          .select("task_id").eq("period_key", pk).in("task_id", ids.length ? ids : [-1]);
-        (comps || []).forEach(c => DONE[c.task_id] = true);
+          .select("task_id").eq("period_key", pk).in("task_id", ids.length?ids:[-1]);
+        (comps||[]).forEach(c => DONE[c.task_id]=true);
       }
       render();
+      loadNote();
     }
 
-    const FREQ_LABEL = { each_shift: "Each Shift", daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+    async function loadNote() {
+      const { data } = await sb.from("shift_note").select("body").eq("id",1).maybeSingle();
+      const box = document.getElementById("handoffBox");
+      if (box && data) box.value = data.body || "";
+    }
+    async function saveNote() {
+      const box = document.getElementById("handoffBox");
+      const { data: { user } } = await sb.auth.getUser();
+      await sb.from("shift_note").update({ body: box.value, updated_by: user.id, updated_at: new Date().toISOString() }).eq("id",1);
+      const s = document.getElementById("handoffSaved");
+      if (s) { s.textContent = "Saved ✓"; setTimeout(()=>s.textContent="", 2000); }
+    }
+
+    const FREQ_LABEL = { each_shift:"Each Shift", daily:"Daily", weekly:"Weekly", monthly:"Monthly" };
 
     function render() {
       const app = document.getElementById("app");
-      const byFreq = {};
-      TASKS.forEach(t => (byFreq[t.frequency] ||= []).push(t));
-
       let html = "";
-      ["each_shift","daily","weekly","monthly"].forEach(f => {
-        if (!byFreq[f]) return;
-        const items = byFreq[f];
-        const done = items.filter(t => DONE[t.id]).length;
-        const pct = Math.round(done / items.length * 100);
-        html += `<h2 class="section">${FREQ_LABEL[f]} — ${done}/${items.length} (${pct}%)</h2>
-          <div class="card">
-            <div class="progress-wrap" style="margin-bottom:10px"><div class="progress-bar" style="width:${pct}%"></div></div>`;
-        items.forEach(t => {
-          const d = DONE[t.id];
-          html += `<label class="row ${d ? "done" : ""}">
-            <input type="checkbox" ${d ? "checked" : ""} onchange="toggle(${t.id}, '${t.frequency}', this.checked)">
-            <div class="txt">${t.text}${t.area ? `<div class="sub">${t.area}</div>` : ""}</div>
-          </label>`;
+
+      // Shared shift handoff note — editable by anyone
+      html += `<div class="card handoff">
+        <div class="lbl" style="font-size:11px;font-weight:800;color:#a07d2c;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Shift Handoff Note</div>
+        <textarea id="handoffBox" placeholder="Leave a note for whoever's working next — low on oat milk, oven runs hot, delivery at 2…"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+          <span class="saved" id="handoffSaved"></span>
+          <button class="mini" onclick="saveNote()">Save note</button>
+        </div>
+      </div>`;
+
+      // Admin: role switcher + add-task
+      if (IS_ADMIN) {
+        html += `<div class="card">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <span class="muted">Viewing:</span>
+            ${ROLES.map(r=>`<button class="${VIEW_ROLE===r?"":"secondary"} mini" onclick="switchRole('${r}')">${roleLabel(r)}</button>`).join("")}
+            <button class="${VIEW_ROLE==="shared"?"":"secondary"} mini" onclick="switchRole('shared')">Shared</button>
+          </div>
+        </div>`;
+        html += `<div class="card">
+          <div class="field"><label>Add a task for ${roleLabel(VIEW_ROLE)}</label>
+            <input type="text" id="newTaskText" placeholder="Task description"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="newTaskFreq" style="font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
+              <option value="each_shift">Each Shift</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <input type="text" id="newTaskArea" placeholder="Area (optional)" style="flex:1;min-width:120px">
+            <button class="mini" onclick="addTask()">Add task</button>
+          </div>
+          <div class="error" id="addTaskErr" style="min-height:auto"></div>
+        </div>`;
+      }
+
+      // Split: this role's own tasks vs the shared shift tasks
+      const mine = TASKS.filter(t => t.owner === VIEW_ROLE);
+      const sharedShift = TASKS.filter(t => t.owner === "shared");
+
+      function taskRow(t) {
+        const d = DONE[t.id];
+        return `<div class="row ${d?"done":""}">
+          <input type="checkbox" ${d?"checked":""} onchange="toggle(${t.id},'${t.frequency}',this.checked)">
+          <div class="txt">${t.text}${t.area?`<div class="sub">${t.area}</div>`:""}</div>
+          ${IS_ADMIN?`<div style="display:flex;gap:4px;align-items:center">
+            <select onchange="reassign(${t.id},this.value)" style="font-size:12px;padding:5px;border-radius:6px;border:1px solid var(--line)">
+              ${[...ROLES,"shared"].map(r=>`<option value="${r}" ${t.owner===r?"selected":""}>${roleLabel(r)}</option>`).join("")}
+            </select>
+            <button class="mini" style="background:var(--red);padding:5px 9px" onclick="delTask(${t.id})">✕</button>
+          </div>`:""}
+        </div>`;
+      }
+      function freqSection(items, labelFn) {
+        const byFreq = {};
+        items.forEach(t => (byFreq[t.frequency] ||= []).push(t));
+        let out = "";
+        ["each_shift","daily","weekly","monthly"].forEach(f => {
+          if (!byFreq[f]) return;
+          const its = byFreq[f];
+          const done = its.filter(t=>DONE[t.id]).length;
+          const pct = Math.round(done/its.length*100);
+          out += `<h2 class="section">${labelFn(f)} — ${done}/${its.length} (${pct}%)</h2>
+            <div class="card">
+              <div class="progress-wrap" style="margin-bottom:10px"><div class="progress-bar" style="width:${pct}%"></div></div>
+              ${its.map(taskRow).join("")}
+            </div>`;
         });
-        html += `</div>`;
-      });
-      app.innerHTML = html || `<div class="empty">No tasks assigned.</div>`;
+        return out;
+      }
+
+      // This person's own role tasks, grouped by frequency
+      html += freqSection(mine, f => FREQ_LABEL[f]);
+
+      // Shared shift tasks (everyone does these), shown as one clear block
+      if (sharedShift.length) {
+        const done = sharedShift.filter(t=>DONE[t.id]).length;
+        const pct = Math.round(done/sharedShift.length*100);
+        html += `<h2 class="section">Shared Shift Tasks — ${done}/${sharedShift.length} (${pct}%)</h2>
+          <div class="card">
+            <div class="progress-wrap" style="margin-bottom:10px"><div class="progress-bar" style="width:${pct}%"></div></div>
+            ${sharedShift.map(taskRow).join("")}
+          </div>`;
+      }
+      app.innerHTML = html || `<div class="empty">No tasks yet.</div>`;
     }
+
+    function switchRole(r){ VIEW_ROLE=r; load(); }
 
     async function toggle(taskId, freq, checked) {
       const pk = periodKey(freq);
       if (checked) {
-        DONE[taskId] = true;
-        const { data: { user } } = await sb.auth.getUser();
-        await sb.from("task_completions").upsert(
-          { task_id: taskId, period_key: pk, completed_by: user.id },
-          { onConflict: "task_id,period_key" });
+        DONE[taskId]=true;
+        const { data:{user} } = await sb.auth.getUser();
+        await sb.from("task_completions").upsert({task_id:taskId,period_key:pk,completed_by:user.id},{onConflict:"task_id,period_key"});
       } else {
         delete DONE[taskId];
-        await sb.from("task_completions").delete().eq("task_id", taskId).eq("period_key", pk);
+        await sb.from("task_completions").delete().eq("task_id",taskId).eq("period_key",pk);
       }
       render();
+    }
+
+    async function addTask() {
+      const err=document.getElementById("addTaskErr"); err.textContent="";
+      const text=document.getElementById("newTaskText").value.trim();
+      const frequency=document.getElementById("newTaskFreq").value;
+      const area=document.getElementById("newTaskArea").value.trim()||null;
+      if (!text){ err.textContent="Enter a task description."; return; }
+      const { error } = await sb.from("tasks").insert({owner:VIEW_ROLE,text,frequency,area,active:true,sort_order:999});
+      if (error){ err.textContent=error.message; return; }
+      await load();
+    }
+    async function delTask(id) {
+      if (!confirm("Delete this task?")) return;
+      await sb.from("tasks").delete().eq("id",id);
+      await load();
+    }
+    async function reassign(id, newOwner) {
+      await sb.from("tasks").update({owner:newOwner}).eq("id",id);
+      await load();
     }
   </script>
 </body>
