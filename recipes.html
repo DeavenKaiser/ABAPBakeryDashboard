@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Recipe Book</title>
+  <link rel="stylesheet" href="style.css?v=1784835876">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading recipes…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1784835876"></script>
+  <script src="nav.js?v=1784835876"></script>
+  <script>
+    let IS_ADMIN=false, RECIPES=[], INGREDIENTS=[], INV={};
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Recipe Book", prof);
+      renderNav("recipes", IS_ADMIN);
+      await load();
+    })();
+
+    async function load() {
+      const [{data:recs},{data:ings},{data:inv}] = await Promise.all([
+        sb.from("recipes").select("*").eq("active",true).order("name"),
+        sb.from("recipe_ingredients").select("*").order("sort_order"),
+        sb.from("inventory_items").select("name,current_on_hand,threshold,owner"),
+      ]);
+      RECIPES = recs||[]; INGREDIENTS = ings||[];
+      // index inventory by lowercased name for matching
+      INV = {};
+      (inv||[]).forEach(i => { INV[(i.name||"").toLowerCase().trim()] = i; });
+      render();
+    }
+
+    function stockStatus(ingName) {
+      // fuzzy-ish match: exact lowercased, else contains
+      const key=(ingName||"").toLowerCase().trim();
+      let it = INV[key];
+      if (!it) {
+        // try partial: any inventory name that contains the ingredient word or vice versa
+        const found = Object.keys(INV).find(k => k.includes(key) || key.includes(k));
+        if (found) it = INV[found];
+      }
+      if (!it) return { label:"not tracked", color:"#b0a48f", have:null };
+      const below = it.current_on_hand!=null && it.threshold!=null && Number(it.current_on_hand)<Number(it.threshold);
+      if (it.current_on_hand==null) return { label:"in inventory", color:"var(--sage)", have:it };
+      if (below) return { label:"low stock", color:"var(--berry)", have:it };
+      return { label:"in stock", color:"var(--sage)", have:it };
+    }
+
+    function render() {
+      const app=document.getElementById("app");
+      if (!RECIPES.length) { app.innerHTML=`<div class="empty">No recipes yet.</div>`; return; }
+
+      let html = `<div class="hero" style="padding:18px 22px">
+        <div><h1 style="font-size:22px">Recipe Book</h1>
+        <div class="sub">${RECIPES.length} recipes${IS_ADMIN?" · you can see costs":""}</div></div>
+      </div>`;
+
+      // search box
+      html += `<div class="card" style="margin-bottom:14px"><input type="text" id="search" placeholder="Search recipes…" oninput="filterList(this.value)"></div>`;
+
+      html += `<div id="recipeList">`;
+      RECIPES.forEach(r => html += recipeCard(r));
+      html += `</div>`;
+      app.innerHTML = html;
+    }
+
+    function recipeCard(r) {
+      const ings = INGREDIENTS.filter(i => i.recipe_id===r.id);
+      let total = 0; let hasCost=false;
+      const rows = ings.map(ing => {
+        const st = stockStatus(ing.ingredient);
+        if (ing.est_cost!=null) { total+=Number(ing.est_cost); hasCost=true; }
+        const amt = ing.amount!=null ? `${ing.amount} ${ing.unit||""}` : (ing.unit||"");
+        return `<div class="mini-item">
+          <span class="dot-tag" style="background:${st.color}"></span>
+          <span style="flex:1">${ing.ingredient}</span>
+          <span class="stat-label" style="min-width:80px;text-align:right">${amt}</span>
+          ${IS_ADMIN && ing.est_cost!=null ? `<span class="stat-label" style="min-width:54px;text-align:right;color:var(--crust)">$${Number(ing.est_cost).toFixed(2)}</span>` : ""}
+        </div>`;
+      }).join("");
+
+      return `<div class="wcard recipe-card" data-name="${(r.name||"").toLowerCase()}" style="margin-bottom:12px">
+        <details>
+          <summary style="cursor:pointer;font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso)">
+            ${r.name}${IS_ADMIN && hasCost ? ` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}
+          </summary>
+          <div style="margin-top:10px">
+            ${rows||'<div class="empty">No ingredients listed.</div>'}
+            <div class="stat-label" style="margin-top:8px">● in stock · ● low · dot color shows live inventory status</div>
+          </div>
+        </details>
+      </div>`;
+    }
+
+    function filterList(q) {
+      q=(q||"").toLowerCase();
+      document.querySelectorAll(".recipe-card").forEach(c => {
+        c.style.display = c.dataset.name.includes(q) ? "" : "none";
+      });
+    }
+  </script>
+</body>
+</html>

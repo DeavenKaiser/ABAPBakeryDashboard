@@ -6,6 +6,7 @@ function renderNav(active, isAdmin) {
     { id: "dashboard", href: "dashboard.html", ico: "◉", label: "Dashboard" },
     { id: "mytasks",   href: "mytasks.html",   ico: "☰", label: "Tasks" },
     { id: "inventory", href: "inventory.html", ico: "▦", label: "Inventory" },
+    { id: "recipes",   href: "recipes.html",   ico: "❦", label: "Recipes" },
   ];
   if (isAdmin) {
     tabs.push({ id: "reports", href: "reports.html", ico: "$", label: "Reports" });

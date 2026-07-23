@@ -128,6 +128,10 @@ function endOfMonth() {
 function endOfToday() { const d = new Date(); d.setHours(23,59,0,0); return d; }
 
 // Return {due: Date, days: int} for a task given owner + frequency.
+// `days` counts whole calendar days from today's date to the due date, minus 1,
+// so at the START of the shift it reads correctly (e.g. Sun→Wed shows 3, not 4).
+// Because it's based on the date (not the clock time), it stays stable all shift
+// and only ticks down at midnight.
 function taskDue(owner, frequency) {
   let due;
   if (frequency === "monthly") due = endOfMonth();
@@ -135,10 +139,14 @@ function taskDue(owner, frequency) {
     if (ROLE_DUE_DOW[owner] != null) due = nextDowDate(ROLE_DUE_DOW[owner]);
     else due = endOfWeek();
   } else {
-    // each_shift / daily
     due = endOfToday();
   }
-  const days = Math.ceil((due - new Date()) / 86400000);
+  // whole-day difference: date of due minus date of today. This reads correctly
+  // at the start of the shift (Sun→Wed = 3) and, being date-based rather than
+  // clock-based, stays stable all shift and only ticks down at midnight.
+  const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+  const startOfDue = new Date(due); startOfDue.setHours(0,0,0,0);
+  const days = Math.max(0, Math.round((startOfDue - startOfToday) / 86400000));
   return { due, days };
 }
 
