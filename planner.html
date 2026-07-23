@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Prep Planner</title>
+  <link rel="stylesheet" href="style.css?v=1784837979">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading Prep Planner…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1784837979"></script>
+  <script src="nav.js?v=1784837979"></script>
+  <script>
+    let IS_ADMIN=false, TAB="pricing", PRICING=[], SETTINGS=[];
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Prep Planner", prof);
+      renderNav("planner", IS_ADMIN);
+      if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
+      await loadPricing();
+      render();
+    })();
+
+    async function loadPricing(){
+      const [{data:pricing},{data:settings}] = await Promise.all([
+        sb.from("v_recipe_pricing").select("*"),
+        sb.from("pricing_settings").select("*").order("category"),
+      ]);
+      PRICING = pricing||[]; SETTINGS = settings||[];
+    }
+
+    function render(){
+      const app=document.getElementById("app");
+      let html=`<div class="hero" style="padding:18px 22px">
+        <div><h1 style="font-size:22px">Prep Planner</h1>
+        <div class="sub">Plan production, project inventory, set pricing</div></div>
+      </div>`;
+
+      // sub-tabs (calendar/list/events come in later chunks)
+      html+=`<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${tabBtn("pricing","Pricing")}
+        ${tabBtn("calendar","Calendar")}
+        ${tabBtn("list","List")}
+        ${tabBtn("events","Events")}
+      </div></div>`;
+
+      if(TAB==="pricing") html+=pricingView();
+      else html+=`<div class="card"><div class="empty">The <strong>${TAB}</strong> view is coming in the next update.</div></div>`;
+
+      app.innerHTML=html;
+    }
+    function tabBtn(id,label){ return `<button class="${TAB===id?"":"secondary"}" onclick="TAB='${id}';render()">${label}</button>`; }
+
+    function pricingView(){
+      // Margin settings editors per category
+      let html=`<h2 class="section">Margins by category</h2>
+        <div class="card"><div class="stat-label" style="margin-bottom:10px">
+          Suggested price = ingredient cost ÷ food-cost %. Lower % = higher price.
+          Typical: retail ~25–30%, wholesale ~45–50%, drinks lower.</div>`;
+      SETTINGS.forEach(s=>{
+        html+=`<div class="mini-item" style="flex-wrap:wrap;gap:10px">
+          <span style="flex:1;min-width:120px;font-weight:600">${s.category}</span>
+          <label class="stat-label">Retail %
+            <input type="number" step="1" value="${Math.round(s.retail_food_cost_pct*100)}" style="width:64px;margin-left:4px"
+              onchange="saveMargin('${s.category}','retail',this.value)"></label>
+          <label class="stat-label">Wholesale %
+            <input type="number" step="1" value="${Math.round(s.wholesale_food_cost_pct*100)}" style="width:64px;margin-left:4px"
+              onchange="saveMargin('${s.category}','wholesale',this.value)"></label>
+        </div>`;
+      });
+      html+=`</div>`;
+
+      // Suggested prices per recipe, grouped by category
+      html+=`<h2 class="section">Suggested prices</h2>`;
+      const byCat={};
+      PRICING.forEach(p=>{ (byCat[p.category||"Other"]||=[]).push(p); });
+      Object.keys(byCat).sort().forEach(cat=>{
+        html+=`<div class="card"><h3 style="font-family:'Fraunces',serif;margin:0 0 10px">${cat}</h3>
+          <div style="overflow-x:auto"><table class="rpt"><tr><th>Item</th><th class="num">Cost</th><th class="num">Retail</th><th class="num">Wholesale</th></tr>`;
+        byCat[cat].sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+          html+=`<tr><td>${p.name}</td>
+            <td class="num">$${Number(p.ingredient_cost||0).toFixed(2)}</td>
+            <td class="num" style="font-weight:700;color:var(--crust)">${p.suggested_retail!=null?"$"+Number(p.suggested_retail).toFixed(2):"—"}</td>
+            <td class="num">${p.suggested_wholesale!=null?"$"+Number(p.suggested_wholesale).toFixed(2):"—"}</td></tr>`;
+        });
+        html+=`</table></div></div>`;
+      });
+      return html;
+    }
+
+    async function saveMargin(category, channel, pctValue){
+      const pct = Math.max(1, Number(pctValue))/100;   // store as fraction, guard >0
+      const col = channel==="retail" ? "retail_food_cost_pct" : "wholesale_food_cost_pct";
+      await sb.from("pricing_settings").update({ [col]: pct, updated_at:new Date().toISOString() }).eq("category",category);
+      await loadPricing();
+      render();
+    }
+  </script>
+</body>
+</html>
