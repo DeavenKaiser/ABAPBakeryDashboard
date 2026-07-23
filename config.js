@@ -74,3 +74,33 @@ function profileJobRole(prof) {
   if (n.includes("marilyn")) return "cleaning";
   return null;
 }
+
+// ---- Admin edit mode (off by default; per-session, per-tab) ----
+function editMode() { return sessionStorage.getItem("editMode") === "on"; }
+function setEditMode(on) { sessionStorage.setItem("editMode", on ? "on" : "off"); }
+
+// Render a small edit-mode toggle into a container; calls onChange when flipped.
+function editToggleHtml() {
+  const on = editMode();
+  return `<label class="tbtn ${on?"on extra":""}" style="margin:0">
+    <input type="checkbox" ${on?"checked":""} onchange="toggleEdit(this.checked)" style="display:none">
+    <span class="dot">${on?"✏️":"🔒"}</span> ${on?"Editing ON":"View only"}
+  </label>`;
+}
+function toggleEdit(on) { setEditMode(on); location.reload(); }
+
+// Map of profile id -> full_name, cached per page load (for showing real names).
+let _nameCache = null;
+async function nameMap() {
+  if (_nameCache) return _nameCache;
+  const { data } = await sb.from("profiles").select("id,full_name,job_role");
+  _nameCache = {};
+  (data||[]).forEach(p => { _nameCache[p.id] = p; });
+  return _nameCache;
+}
+// Given a job_role (baker/barista/cleaning), find the person's name assigned to it.
+async function nameForRole(role) {
+  const m = await nameMap();
+  const hit = Object.values(m).find(p => p.job_role === role);
+  return hit ? hit.full_name : roleLabel(role);
+}

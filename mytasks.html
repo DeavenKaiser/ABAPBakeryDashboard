@@ -70,8 +70,20 @@
       const box = document.getElementById("handoffBox");
       const { data: { user } } = await sb.auth.getUser();
       await sb.from("shift_note").update({ body: box.value, updated_by: user.id, updated_at: new Date().toISOString() }).eq("id",1);
+      // append to 30-day history if non-empty
+      if (box.value.trim()) {
+        await sb.from("shift_note_history").insert({ body: box.value, written_by: user.id });
+      }
       const s = document.getElementById("handoffSaved");
       if (s) { s.textContent = "Saved ✓"; setTimeout(()=>s.textContent="", 2000); }
+    }
+    async function clearNote() {
+      const box = document.getElementById("handoffBox");
+      box.value = "";
+      const { data: { user } } = await sb.auth.getUser();
+      await sb.from("shift_note").update({ body: "", updated_by: user.id, updated_at: new Date().toISOString() }).eq("id",1);
+      const s = document.getElementById("handoffSaved");
+      if (s) { s.textContent = "Cleared"; setTimeout(()=>s.textContent="", 2000); }
     }
 
     const FREQ_LABEL = { each_shift:"Each Shift", daily:"Daily", weekly:"Weekly", monthly:"Monthly" };
@@ -86,12 +98,20 @@
         <textarea id="handoffBox" placeholder="Leave a note for whoever's working next — low on oat milk, oven runs hot, delivery at 2…"></textarea>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
           <span class="saved" id="handoffSaved"></span>
-          <button class="mini" onclick="saveNote()">Save note</button>
+          <div style="display:flex;gap:6px">
+            <button class="secondary mini" onclick="clearNote()">Clear</button>
+            <button class="mini" onclick="saveNote()">Save note</button>
+          </div>
         </div>
       </div>`;
 
       // Admin: role switcher + add-task
+      // Admin: edit-mode toggle (off by default), then role switcher + add-task when editing
       if (IS_ADMIN) {
+        html += `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="muted">Admin</span>${editToggleHtml()}</div></div>`;
+      }
+      if (IS_ADMIN && editMode()) {
         html += `<div class="card">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <span class="muted">Viewing:</span>
@@ -125,7 +145,7 @@
         return `<div class="row ${d?"done":""}">
           <input type="checkbox" ${d?"checked":""} onchange="toggle(${t.id},'${t.frequency}',this.checked)">
           <div class="txt">${t.text}${t.area?`<div class="sub">${t.area}</div>`:""}</div>
-          ${IS_ADMIN?`<div style="display:flex;gap:4px;align-items:center">
+          ${(IS_ADMIN && editMode())?`<div style="display:flex;gap:4px;align-items:center">
             <select onchange="reassign(${t.id},this.value)" style="font-size:12px;padding:5px;border-radius:6px;border:1px solid var(--line)">
               ${[...ROLES,"shared"].map(r=>`<option value="${r}" ${t.owner===r?"selected":""}>${roleLabel(r)}</option>`).join("")}
             </select>

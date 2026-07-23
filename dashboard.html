@@ -67,6 +67,22 @@
       if (note && note.body && note.body.trim()) {
         html += `<div class="handoff-banner"><span class="lbl">Shift note</span><br>${note.body.replace(/</g,"&lt;")}</div>`;
       }
+      // Admin: collapsible past-notes history (rolling 30 days)
+      if (IS_ADMIN) {
+        const { data: hist } = await sb.from("shift_note_history")
+          .select("body, written_at").order("written_at",{ascending:false}).limit(30);
+        if (hist && hist.length) {
+          const names = await nameMap();
+          html += `<div class="card"><details>
+            <summary style="cursor:pointer;font-weight:700;color:var(--brown)">Past shift notes (${hist.length})</summary>
+            <div style="margin-top:10px">` +
+            hist.map(h => `<div style="border-bottom:1px solid var(--line);padding:6px 0">
+              <div style="font-size:14px">${(h.body||"").replace(/</g,"&lt;")}</div>
+              <div class="freshness">${new Date(h.written_at).toLocaleString()}</div>
+            </div>`).join("") +
+            `</div></details></div>`;
+        }
+      }
 
       // ----- Shared shift progress (everyone sees this) -----
       const { data: shiftTasks } = await sb.from("tasks")

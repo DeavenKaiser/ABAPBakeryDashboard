@@ -32,7 +32,7 @@
     // If already signed in, skip straight to the app.
     (async () => {
       const { data: { session } } = await sb.auth.getSession();
-      if (session) window.location.href = "shift.html";
+      if (session) window.location.href = "dashboard.html";
     })();
 
     const err = document.getElementById("err");
@@ -48,7 +48,10 @@
       if (!email || !password) { err.textContent = "Enter your email and password."; return; }
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) { err.textContent = error.message; return; }
-      window.location.href = "shift.html";
+      // Force password change if admin flagged it.
+      const prof = await getMyProfile();
+      if (prof && prof.must_change_password) { window.location.href = "change-password.html"; return; }
+      window.location.href = "dashboard.html";
     }
   </script>
 </body>

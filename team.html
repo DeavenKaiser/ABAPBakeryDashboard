@@ -142,6 +142,7 @@
           </div>
           <div style="display:flex;gap:6px;flex-direction:column">
             <button class="secondary mini" onclick="toggleRole('${u.id}','${u.role}')">${u.role==="admin"?"Make staff":"Make admin"}</button>
+            <button class="secondary mini" onclick="pwPrompt('${u.id}','${(u.full_name||"").replace(/'/g,"")}')">Set password</button>
             <button class="mini" style="background:var(--red)" onclick="delUser('${u.id}','${(u.full_name||"").replace(/'/g,"")}')">Remove</button>
           </div>
         </div>`;
@@ -166,6 +167,34 @@
       await callFn({ action:"set_role", id, role: cur==="admin"?"staff":"admin" });
       await load();
     }
+    function pwPrompt(id, name) {
+      const overlay = document.createElement("div");
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px";
+      overlay.innerHTML = `<div class="card" style="max-width:360px;width:100%;margin:0">
+        <h2 class="section" style="margin-top:0">Set password for ${name}</h2>
+        <div class="field"><label>New password</label><input type="password" id="pw1"></div>
+        <div class="field"><label>Confirm password</label><input type="password" id="pw2"></div>
+        <p class="muted" style="font-size:12px">8+ chars, 3 of 4: lowercase, uppercase, number, symbol. They'll be asked to change it at next login.</p>
+        <div class="error" id="pwErr" style="min-height:auto"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="secondary mini" id="pwCancel">Cancel</button>
+          <button class="mini" id="pwSave">Set password</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector("#pwCancel").onclick = () => overlay.remove();
+      overlay.querySelector("#pwSave").onclick = async () => {
+        const p1 = overlay.querySelector("#pw1").value, p2 = overlay.querySelector("#pw2").value;
+        const e = overlay.querySelector("#pwErr");
+        if (p1 !== p2) { e.textContent = "Passwords don't match."; return; }
+        const cats = [/[a-z]/,/[A-Z]/,/[0-9]/,/[^A-Za-z0-9]/].filter(re=>re.test(p1)).length;
+        if (p1.length < 8 || cats < 3) { e.textContent = "8+ chars and 3 of 4 categories required."; return; }
+        const r = await callFn({ action: "set_password", id, password: p1 });
+        if (r.error) { e.textContent = r.error; return; }
+        overlay.remove();
+      };
+    }
+
     async function setJob(id, job_role) {
       await callFn({ action:"set_job", id, job_role });
       await load();
