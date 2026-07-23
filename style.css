@@ -185,3 +185,99 @@ table.rpt td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 nav.tabs a { position: relative; }
 .freshness { font-size: 11px; color: #a99; margin-top: 3px; }
+
+/* ============ v8: cozy bakery dashboard ============ */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --crust: #6B4F3A;
+  --espresso: #3D2E23;
+  --cream: #FBF6EE;
+  --butter: #F5E6C8;
+  --sage: #7F9B6E;
+  --berry: #C15B4A;
+  --honey: #E0A43B;
+}
+
+.dash { font-family: 'Inter', -apple-system, sans-serif; }
+
+/* Greeting hero */
+.hero {
+  background: linear-gradient(135deg, var(--crust), var(--espresso));
+  color: #fff; border-radius: 20px; padding: 22px 24px; margin-bottom: 18px;
+  display: flex; justify-content: space-between; align-items: center; gap: 18px;
+  position: relative; overflow: hidden;
+}
+.hero::after {
+  content: ""; position: absolute; right: -30px; top: -30px; width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(245,230,200,.18), transparent 70%);
+}
+.hero h1 {
+  font-family: 'Fraunces', Georgia, serif; font-weight: 900; font-size: 26px;
+  margin: 0 0 4px; line-height: 1.1;
+}
+.hero .sub { font-size: 14px; opacity: .85; }
+.hero-ring { flex-shrink: 0; }
+
+/* Metric cards grid */
+.grid-dash {
+  display: grid; gap: 14px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 620px) { .grid-dash { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1000px) { .grid-dash { grid-template-columns: repeat(3, 1fr); } }
+
+.wcard {
+  background: #fff; border: 1px solid #EADFCB; border-radius: 18px; padding: 18px;
+  position: relative; transition: box-shadow .2s, transform .2s;
+  box-shadow: 0 1px 2px rgba(61,46,35,.04);
+}
+.wcard:hover { box-shadow: 0 6px 20px rgba(61,46,35,.10); }
+.wcard.dragging { opacity: .5; }
+.wcard.drag-over { border-color: var(--crust); border-style: dashed; }
+.wcard h3 {
+  font-family: 'Fraunces', serif; font-weight: 600; font-size: 15px; color: var(--espresso);
+  margin: 0 0 12px; display: flex; align-items: center; gap: 7px;
+}
+.wcard .grip {
+  cursor: grab; color: #C9BBA5; font-size: 16px; margin-left: auto; touch-action: none;
+  user-select: none; padding: 2px 4px;
+}
+.wcard .grip:active { cursor: grabbing; }
+.wcard .wremove {
+  background: none; border: none; color: #C9BBA5; cursor: pointer; font-size: 15px;
+  padding: 2px 4px; margin-left: 2px;
+}
+.wcard .wremove:hover { color: var(--berry); }
+
+.stat-big { font-family: 'Fraunces', serif; font-weight: 900; font-size: 40px; color: var(--crust); line-height: 1; }
+.stat-label { font-size: 13px; color: #8A7B66; margin-top: 4px; }
+.stat-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+
+/* Progress ring (SVG) */
+.ring-wrap { display: flex; align-items: center; justify-content: center; }
+.ring-num { font-family: 'Fraunces', serif; font-weight: 900; font-size: 22px; fill: #fff; }
+
+/* Chips / mini lists inside cards */
+.mini-item { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #F0E9DA; font-size: 14px; }
+.mini-item:last-child { border-bottom: none; }
+.dot-tag { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Widget tray (add removed widgets back) */
+.tray { background: #F3ECDD; border: 1px dashed #D8C7A8; border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; }
+.tray-chip {
+  display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #E0D2B8;
+  border-radius: 20px; padding: 6px 12px; font-size: 13px; margin: 4px 6px 0 0; cursor: pointer;
+}
+.tray-chip:hover { border-color: var(--crust); }
+
+.dash-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+.dash-toolbar .tbtn { margin: 0; }
+
+/* clickable chart legend cue */
+.clickable { cursor: pointer; }
+.clickable:hover { filter: brightness(1.05); }
+
+@media (prefers-reduced-motion: reduce) {
+  .wcard { transition: none; }
+}

@@ -8,255 +8,346 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
-<body>
-  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading your day…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="config.js"></script>
   <script src="nav.js"></script>
   <script>
-    let PROF = null, IS_ADMIN = false, OWNER = null;
+    // ---------- state ----------
+    let PROF=null, IS_ADMIN=false, MY_ROLE=null, DATA={};
 
     (async () => {
       if (!(await requireLogin())) return;
       PROF = await getMyProfile();
       IS_ADMIN = PROF && PROF.role === "admin";
-      const name = (PROF?.full_name || "").toLowerCase();
-      if (name.includes("sierra")) OWNER = "sierra";
-      else if (name.includes("mackenzie") || name.includes("kenzie")) OWNER = "mackenzie";
-      else if (name.includes("marilyn")) OWNER = "marilyn";
+      MY_ROLE = profileJobRole(PROF);
       await renderTopbar("Dashboard", PROF);
       renderNav("dashboard", IS_ADMIN);
-      await load();
+      await loadData();
+      renderDash();
     })();
 
-    function isBelow(it) {
-      return it.current_on_hand != null && it.threshold != null
-             && Number(it.current_on_hand) < Number(it.threshold);
-    }
+    function isBelow(it){ return it.current_on_hand!=null && it.threshold!=null && Number(it.current_on_hand)<Number(it.threshold); }
 
-    async function completionsFor(tasks) {
+    // ---------- one-time data load ----------
+    async function loadData() {
+      const [{data:items},{data:tasks}] = await Promise.all([
+        sb.from("inventory_items").select("*"),
+        sb.from("tasks").select("*").eq("active",true),
+      ]);
+      DATA.items = items||[]; DATA.tasks = tasks||[];
+
+      // completions for current periods
       const done = new Set();
-      for (const f of ["each_shift","daily","weekly","monthly"]) {
-        const ids = tasks.filter(t => t.frequency === f).map(t => t.id);
-        if (!ids.length) continue;
-        const { data } = await sb.from("task_completions")
-          .select("task_id").eq("period_key", periodKey(f)).in("task_id", ids);
-        (data || []).forEach(c => done.add(c.task_id));
-      }
-      return done;
+      await Promise.all(["each_shift","daily","weekly","monthly"].map(async f=>{
+        const ids = DATA.tasks.filter(t=>t.frequency===f).map(t=>t.id);
+        if(!ids.length) return;
+        const { data } = await sb.from("task_completions").select("task_id").eq("period_key",periodKey(f)).in("task_id",ids);
+        (data||[]).forEach(c=>done.add(c.task_id));
+      }));
+      DATA.done = done;
+
+      // open orders
+      const { data: orders } = await sb.from("order_log").select("*").in("status",["open","needs_reorder"]);
+      DATA.orders = {}; (orders||[]).forEach(o=>DATA.orders[o.item_id]=o);
+
+      // shift note
+      const { data: note } = await sb.from("shift_note").select("body").eq("id",1).maybeSingle();
+      DATA.note = note ? note.body : "";
     }
 
-    function progressCard(title, done, total) {
-      const pct = total ? Math.round(done/total*100) : 0;
-      return `<div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <strong>${title}</strong><span class="muted">${done}/${total} · ${pct}%</span>
-        </div>
-        <div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pct}%"></div></div>
-      </div>`;
+    // ---------- helpers for widgets ----------
+    function roleTasks(role){ return DATA.tasks.filter(t=>t.owner===role); }
+    function pctDone(list){ if(!list.length) return 0; return Math.round(list.filter(t=>DATA.done.has(t.id)).length/list.length*100); }
+    function greeting(){
+      const h=new Date().getHours();
+      if(h<11) return "Good morning";
+      if(h<16) return "Good afternoon";
+      return "Good evening";
+    }
+    function bakeryLine(){
+      const lines=["let's get the ovens going.","fresh start, let's make it a good one.","coffee's on — let's roll.","another batch, another great day.","let's keep the shelves full and the line moving."];
+      return lines[new Date().getDate() % lines.length];
     }
 
-    async function load() {
-      const app = document.getElementById("app");
-      let html = "";
+    // SVG progress ring
+    function ring(pct, size=64, stroke=8, color="#fff", track="rgba(255,255,255,.25)"){
+      const r=(size-stroke)/2, c=2*Math.PI*r, off=c*(1-pct/100);
+      return `<svg width="${size}" height="${size}" class="hero-ring" viewBox="0 0 ${size} ${size}">
+        <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>
+        <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
+          stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${off}"
+          transform="rotate(-90 ${size/2} ${size/2})" style="transition:stroke-dashoffset .6s ease"/>
+        <text x="50%" y="50%" text-anchor="middle" dy=".35em" class="ring-num">${pct}%</text>
+      </svg>`;
+    }
 
-      // ----- Shift handoff note (read-only banner, everyone) -----
-      const { data: note } = await sb.from("shift_note").select("body").eq("id",1).single();
-      if (note && note.body && note.body.trim()) {
-        html += `<div class="handoff-banner"><span class="lbl">Shift note</span><br>${note.body.replace(/</g,"&lt;")}</div>`;
-      }
-      // Admin: collapsible past-notes history (rolling 30 days)
-      if (IS_ADMIN) {
-        const { data: hist } = await sb.from("shift_note_history")
-          .select("body, written_at").order("written_at",{ascending:false}).limit(30);
-        if (hist && hist.length) {
-          const names = await nameMap();
-          html += `<div class="card"><details>
-            <summary style="cursor:pointer;font-weight:700;color:var(--brown)">Past shift notes (${hist.length})</summary>
-            <div style="margin-top:10px">` +
-            hist.map(h => `<div style="border-bottom:1px solid var(--line);padding:6px 0">
-              <div style="font-size:14px">${(h.body||"").replace(/</g,"&lt;")}</div>
-              <div class="freshness">${new Date(h.written_at).toLocaleString()}</div>
-            </div>`).join("") +
-            `</div></details></div>`;
-        }
-      }
-
-      // ----- Shared shift progress (everyone sees this) -----
-      const { data: shiftTasks } = await sb.from("tasks")
-        .select("*").eq("owner","shared").eq("frequency","each_shift").eq("active",true);
-      const shiftDone = await completionsFor(shiftTasks || []);
-      const sDone = (shiftTasks||[]).filter(t => shiftDone.has(t.id)).length;
-
-      // ----- This person's own tasks (everyone sees their own) -----
-      let ownBlock = "";
-      if (OWNER) {
-        const { data: myTasks } = await sb.from("tasks")
-          .select("*").eq("owner",OWNER).eq("active",true);
-        const myDone = await completionsFor(myTasks || []);
-        const mDone = (myTasks||[]).filter(t => myDone.has(t.id)).length;
-        ownBlock = progressCard("My tasks", mDone, (myTasks||[]).length);
-      }
-
-      html += `<div class="grid2">
-        ${progressCard("Full shift (shared)", sDone, (shiftTasks||[]).length)}
-        ${ownBlock}
-      </div>`;
-
-      // ================= STAFF STOP HERE (no money/stats) =================
-      if (!IS_ADMIN) {
-        document.getElementById("app").innerHTML = html;
-        return;
-      }
-
-      // ================= ADMIN: financials, stats, order list =============
-      const { data: items } = await sb.from("inventory_items").select("*");
-      const { data: allTasks } = await sb.from("tasks").select("*").eq("active",true);
-      const allDone = await completionsFor(allTasks || []);
-
-      // Per-employee (role) DAILY tasks — collapsible, each with a progress bar
-      html += `<h2 class="section">Daily tasks by employee</h2>`;
-      const dailyFreqs = ["each_shift","daily"];
-      [["baker","Baker"],["barista","Barista"],["cleaning","Cleaning"],["shared","Shared shift"]].forEach(([o,label]) => {
-        const ts = (allTasks||[]).filter(t => t.owner===o && dailyFreqs.includes(t.frequency));
-        if (!ts.length) return;
-        const d = ts.filter(t => allDone.has(t.id)).length;
-        const pct = Math.round(d/ts.length*100);
-        const rowsHtml = ts.map(t =>
-          `<div class="row ${allDone.has(t.id)?"done":""}" style="padding:8px 4px">
-             <span style="width:18px">${allDone.has(t.id)?"✓":"○"}</span>
-             <div class="txt" style="font-size:14px">${t.text}${t.area?` <span class="muted">· ${t.area}</span>`:""}</div>
-           </div>`).join("");
-        html += `<div class="card" style="padding:0;overflow:hidden">
-          <div onclick="toggleGroup('${o}')" style="cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:10px">
-            <span id="caret-${o}" style="transition:transform .15s;font-size:12px;color:var(--brown)">▶</span>
+    // ===================================================================
+    // WIDGET DEFINITIONS — each returns {title, body} html
+    // ===================================================================
+    const WIDGETS = {
+      my_progress: () => {
+        const mine = MY_ROLE ? roleTasks(MY_ROLE) : [];
+        const p = pctDone(mine);
+        const doneN = mine.filter(t=>DATA.done.has(t.id)).length;
+        return { title:"🧁 My tasks today", body:`
+          <div class="stat-row"><div class="stat-big">${doneN}/${mine.length}</div><div class="stat-label">${p}% done</div></div>
+          <div class="progress-wrap" style="margin-top:10px"><div class="progress-bar" style="width:${p}%"></div></div>
+          <a href="mytasks.html"><button class="mini" style="margin-top:12px">Go to my tasks →</button></a>` };
+      },
+      shift_progress: () => {
+        const shift = DATA.tasks.filter(t=>t.owner==="shared" && t.frequency==="each_shift");
+        const p = pctDone(shift);
+        const doneN = shift.filter(t=>DATA.done.has(t.id)).length;
+        return { title:"🧹 Shared shift tasks", body:`
+          <div class="stat-row"><div class="stat-big">${doneN}/${shift.length}</div><div class="stat-label">${p}% this shift</div></div>
+          <div class="progress-wrap" style="margin-top:10px"><div class="progress-bar" style="width:${p}%"></div></div>
+          ${p===100?`<div style="margin-top:10px;color:var(--sage);font-weight:700">✨ All shift tasks done — nice work!</div>`:""}` };
+      },
+      handoff: () => ({ title:"📝 Shift note", body:
+        DATA.note && DATA.note.trim()
+          ? `<div style="font-size:15px;line-height:1.4;white-space:pre-wrap">${DATA.note.replace(/</g,"&lt;")}</div>
+             <a href="mytasks.html"><button class="mini secondary" style="margin-top:10px">Edit note</button></a>`
+          : `<div class="empty" style="padding:12px">No note right now.<br><a href="mytasks.html">Leave one for the next shift →</a></div>` }),
+      my_inventory: () => {
+        if(!MY_ROLE) return { title:"📦 My inventory", body:`<div class="empty" style="padding:12px">No job role assigned yet.</div>` };
+        const mine = DATA.items.filter(i=>i.owner===MY_ROLE);
+        const low = mine.filter(isBelow);
+        const toCount = mine.filter(i=>!i.counted_this_week);
+        return { title:"📦 My inventory", body:`
+          <div style="display:flex;gap:18px;flex-wrap:wrap">
+            <div><div class="stat-big" style="font-size:30px">${low.length}</div><div class="stat-label">below threshold</div></div>
+            <div><div class="stat-big" style="font-size:30px">${toCount.length}</div><div class="stat-label">left to count</div></div>
+          </div>
+          <a href="inventory.html"><button class="mini" style="margin-top:12px">Open inventory →</button></a>` };
+      },
+      // ---- admin widgets ----
+      team_completion: () => {
+        let rows="";
+        [["baker","Baker"],["barista","Barista"],["cleaning","Cleaning"],["shared","Shared"]].forEach(([o,label])=>{
+          const ts=roleTasks(o); if(!ts.length) return;
+          const p=pctDone(ts), d=ts.filter(t=>DATA.done.has(t.id)).length;
+          rows+=`<div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:14px"><span>${label}</span><span class="stat-label">${d}/${ts.length} · ${p}%</span></div>
+            <div class="progress-wrap"><div class="progress-bar" style="width:${p}%"></div></div></div>`;
+        });
+        return { title:"👥 Team completion", body: rows||`<div class="empty">No tasks.</div>` };
+      },
+      inventory_health: () => {
+        const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
+        const inStock=DATA.items.length-below.length;
+        return { title:"🥧 Inventory health", body:`
+          <div class="ring-wrap"><canvas id="healthPie" width="200" height="200" style="max-width:200px"></canvas></div>
+          <div style="display:flex;justify-content:center;gap:14px;margin-top:6px;flex-wrap:wrap;font-size:13px">
+            <span class="clickable" onclick="location.href='inventory.html'"><span class="dot-tag" style="background:var(--sage);display:inline-block"></span> In stock ${inStock}</span>
+            <span class="clickable" onclick="location.href='inventory.html?filter=below'"><span class="dot-tag" style="background:var(--berry);display:inline-block"></span> Below ${below.length}</span>
+            <span class="clickable" onclick="location.href='inventory.html?filter=extra'"><span class="dot-tag" style="background:var(--honey);display:inline-block"></span> Order extra ${extra.length}</span>
+          </div>
+          <div class="stat-label" style="text-align:center;margin-top:6px">Tap a slice or label to jump to those items</div>` };
+      },
+      stock_value: () => {
+        const val=DATA.items.reduce((s,i)=>s+((i.unit_cost!=null&&i.current_on_hand!=null)?i.unit_cost*i.current_on_hand:0),0);
+        return { title:"💰 Stock value", body:`
+          <div class="stat-big">$${val.toFixed(2)}</div><div class="stat-label">current inventory on hand</div>
+          <a href="reports.html"><button class="mini" style="margin-top:12px">Full reports →</button></a>` };
+      },
+      to_order: () => {
+        const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
+        const toOrder=[...new Set([...below,...extra])];
+        let body="";
+        if(!toOrder.length) body=`<div class="empty" style="padding:12px">Nothing to order — shelves look good. 🎉</div>`;
+        else body=toOrder.map(it=>{
+          const ord=DATA.orders[it.id];
+          const isOpen=ord&&ord.status==="open";
+          const needs=ord&&ord.status==="needs_reorder";
+          const dateStr=ord?new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"";
+          return `<div class="mini-item" style="align-items:flex-start" data-order="${it.id}">
+            <span class="dot-tag" style="background:${isBelow(it)?'var(--berry)':'var(--honey)'};margin-top:6px"></span>
             <div style="flex:1">
-              <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:600">
-                <span>${label}</span><span class="muted">${d}/${ts.length} · ${pct}%</span>
-              </div>
-              <div class="progress-wrap" style="margin-top:6px"><div class="progress-bar" style="width:${pct}%"></div></div>
+              <span style="${isOpen?'text-decoration:line-through;color:#aaa':''}">${it.name}</span>
+              <div class="stat-label">${isBelow(it)?"below threshold":"order extra"}${isOpen?` · ordered ${dateStr}`:""}${needs?` · ⚠ still below`:""}</div>
             </div>
-          </div>
-          <div id="group-${o}" style="display:none;padding:0 16px 12px 44px">${rowsHtml}</div>
-        </div>`;
-      });
+            ${isOpen
+              ? `<button class="mini secondary" style="padding:5px 10px" onclick="unorderItem(${it.id})">Undo</button>`
+              : `<button class="mini" style="padding:5px 10px" onclick="orderItem(${it.id})">Ordered</button>`}
+          </div>`;
+        }).join("");
+        return { title:"🛒 Shopping cart", body };
+      },
+      predict: () => {
+        return { title:"🔮 Likely to order soon", body:`<div id="predictBody"><div class="stat-label">Loading estimate…</div></div>` };
+      },
+    };
 
-      // inventory health + value
-      const below = (items||[]).filter(isBelow);
-      const extra = (items||[]).filter(i => i.order_extra);
-      const inStock = (items||[]).length - below.length;
-      const stockValue = (items||[]).reduce((s,i)=>
-        s + ((i.unit_cost!=null && i.current_on_hand!=null) ? i.unit_cost*i.current_on_hand : 0), 0);
+    // Which widgets each role sees by default
+    const DEFAULT_LAYOUT = {
+      staff: ["my_progress","shift_progress","handoff","my_inventory"],
+      admin: ["team_completion","inventory_health","to_order","stock_value","predict","handoff"],
+    };
+    const ALL_FOR = {
+      staff: ["my_progress","shift_progress","handoff","my_inventory"],
+      admin: ["team_completion","inventory_health","to_order","stock_value","predict","handoff","shift_progress"],
+    };
 
-      html += `<h2 class="section">Inventory health</h2>
-        <div class="grid2">
-          <div class="card"><canvas id="invChart" height="170"></canvas></div>
-          <div class="card">
-            <div class="muted">Current stock value</div>
-            <div class="big-num">$${stockValue.toFixed(2)}</div>
-            <div class="muted" style="margin-top:8px">${below.length} below threshold · ${extra.length} order extra</div>
-            <a href="reports.html"><button class="mini" style="margin-top:10px">View reports →</button></a>
-          </div>
-        </div>`;
+    function layoutKey(){ return `dashLayout_${IS_ADMIN?'admin':'staff'}_${PROF.id}`; }
+    function getLayout(){
+      try { const s=localStorage.getItem(layoutKey()); if(s) return JSON.parse(s); } catch(e){}
+      return (IS_ADMIN?DEFAULT_LAYOUT.admin:DEFAULT_LAYOUT.staff).slice();
+    }
+    function saveLayout(arr){ try{ localStorage.setItem(layoutKey(), JSON.stringify(arr)); }catch(e){} }
 
-      // Items to order — with Ordered button (admin task)
-      // Pull both 'open' (grayed, awaiting delivery) and 'needs_reorder'
-      // (was counted but still below → un-gray + notice).
-      const { data: activeOrders } = await sb.from("order_log")
-        .select("*").in("status", ["open","needs_reorder"]);
-      const orderByItem = {};
-      (activeOrders||[]).forEach(o => orderByItem[o.item_id] = o);
-      const toOrder = [...new Set([...below, ...extra])];
+    // ---------- render ----------
+    function renderDash() {
+      const app=document.getElementById("app");
+      const mine = MY_ROLE ? roleTasks(MY_ROLE) : [];
+      const focusPct = IS_ADMIN
+        ? pctDone(DATA.tasks.filter(t=>t.owner==="shared"&&t.frequency==="each_shift"))
+        : pctDone([...(MY_ROLE?mine:[]), ...DATA.tasks.filter(t=>t.owner==="shared"&&t.frequency==="each_shift")]);
 
-      html += `<h2 class="section">Items to order (${toOrder.length})</h2><div class="card" id="orderCard">`;
-      if (!toOrder.length) html += `<div class="empty">Nothing to order right now.</div>`;
-      toOrder.forEach(it => {
-        const ord = orderByItem[it.id];
-        const isOpen = ord && ord.status === "open";              // grayed, awaiting delivery
-        const needsReorder = ord && ord.status === "needs_reorder"; // un-gray + notice
-        const dateStr = ord ? new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "";
-        html += `<div class="row order-row ${isOpen?"ordered":""}" id="ord-${it.id}">
-          <div class="txt">${it.name}
-            <div class="sub">${it.owner} · ${isBelow(it)?"Below threshold":"Order extra"}${it.reorder_note?" · "+it.reorder_note:""}</div>
-            ${isOpen?`<div class="order-date">Ordered ${dateStr} — awaiting delivery</div>`:""}
-            ${needsReorder?`<div class="order-date" style="color:var(--red)">⚠ Counted but still below — needs reordering</div>`:""}
-          </div>
-          ${isOpen
-            ? `<button class="secondary mini" onclick="unorder(${it.id})">Undo</button>`
-            : `<button class="mini" onclick="markOrdered(${it.id})">Ordered</button>`}
+      const firstName=(PROF.full_name||"there").split(" ")[0];
+      let html = `<div class="hero">
+        <div>
+          <h1>${greeting()}, ${firstName}</h1>
+          <div class="sub">${bakeryLine()}</div>
+        </div>
+        ${ring(focusPct)}
+      </div>`;
+
+      // toolbar
+      html += `<div class="dash-toolbar">
+        <span class="stat-label">${IS_ADMIN?"Command center":"Today's focus"} · drag cards by the ⠿ handle to rearrange</span>
+        <button class="tbtn" onclick="resetLayout()"><span class="dot">↺</span> Reset layout</button>
+      </div>`;
+
+      // tray of hidden widgets
+      const layout=getLayout();
+      const all=(IS_ADMIN?ALL_FOR.admin:ALL_FOR.staff);
+      const hidden=all.filter(w=>!layout.includes(w));
+      if(hidden.length){
+        html+=`<div class="tray"><span class="stat-label">Add a card:</span> `+
+          hidden.map(w=>`<span class="tray-chip" onclick="addWidget('${w}')">＋ ${WIDGETS[w]().title}</span>`).join("")+`</div>`;
+      }
+
+      // grid
+      html += `<div class="grid-dash" id="grid">`;
+      layout.forEach(w=>{
+        if(!WIDGETS[w]) return;
+        const {title,body}=WIDGETS[w]();
+        html += `<div class="wcard" draggable="false" data-w="${w}">
+          <h3>${title}
+            <span class="grip" title="Drag to move" onpointerdown="startDrag(event,'${w}')">⠿</span>
+            <button class="wremove" title="Remove card" onclick="removeWidget('${w}')">✕</button>
+          </h3>
+          <div class="wbody">${body}</div>
         </div>`;
       });
       html += `</div>`;
-
-      // ---- Predictive: likely to need ordering within ~7 days ----
-      const { data: proj } = await sb.from("v_order_projection").select("*");
-      const soon = (proj||[])
-        .filter(p => p.days_to_threshold != null && p.days_to_threshold >= 0 && p.days_to_threshold <= 7)
-        .filter(p => !toOrder.find(t => t.id === p.id))
-        .sort((a,b) => a.days_to_threshold - b.days_to_threshold);
-      html += `<h2 class="section">Likely to order soon <span class="muted" style="font-weight:400">(estimated)</span></h2><div class="card">`;
-      if (!soon.length) {
-        html += `<div class="empty">No items projected to run low this week.<br><span class="muted">Estimates improve as more count history builds up.</span></div>`;
-      } else {
-        soon.forEach(p => {
-          html += `<div class="row"><div class="txt">${p.name}
-            <div class="sub">${roleLabel(p.owner)} · ~${p.days_to_threshold} day(s) to threshold · using ~${p.per_day_use}/day</div>
-          </div></div>`;
-        });
-        html += `<div class="muted" style="margin-top:8px;font-size:12px">Projections from recent usage; they get smarter as history accumulates.</div>`;
-      }
-      html += `</div>`;
-
-      // ---- Task completion reliability (admin decision aid) ----
-      const { data: tstats } = await sb.from("v_task_stats").select("*");
-      if (tstats && tstats.length) {
-        const rows = tstats.map(s => ({ ...s, rate: s.expected_60d>0 ? s.completions_60d/s.expected_60d : 1 }))
-          .sort((a,b) => a.rate - b.rate).slice(0, 12);
-        html += `<h2 class="section">Task completion — needs attention</h2>
-          <div class="card"><div class="muted" style="margin-bottom:8px">Lowest completion over ~60 days. Consider reassigning persistently-missed tasks.</div>
-          <div style="overflow-x:auto"><table class="rpt"><tr><th>Task</th><th>Role</th><th class="num">Done</th><th class="num">Rate</th></tr>`;
-        rows.forEach(s => {
-          const pct = Math.round(s.rate*100);
-          const color = pct < 50 ? "var(--red)" : (pct < 80 ? "#b8860b" : "var(--green)");
-          html += `<tr><td>${s.text}</td><td>${roleLabel(s.owner)}</td>
-            <td class="num">${s.completions_60d}/${s.expected_60d}</td>
-            <td class="num" style="color:${color};font-weight:700">${pct}%</td></tr>`;
-        });
-        html += `</table></div></div>`;
-      }
-
       app.innerHTML = html;
 
-      new Chart(document.getElementById("invChart"), {
-        type:"doughnut",
-        data:{ labels:["In stock","Below","Order extra"],
-          datasets:[{ data:[inStock, below.length, extra.length],
-            backgroundColor:["#4A7C4E","#B23A2E","#D8C3A5"] }] },
-        options:{ plugins:{ legend:{ position:"bottom" } } }
+      // post-render: charts + async widgets
+      if(layout.includes("inventory_health")) drawHealthPie();
+      if(layout.includes("predict")) loadPredict();
+    }
+
+    // ---------- charts ----------
+    let pieChart=null;
+    function drawHealthPie(){
+      const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
+      const inStock=DATA.items.length-below.length;
+      const el=document.getElementById("healthPie"); if(!el) return;
+      // lazy-load chart.js
+      loadChartJs().then(()=>{
+        if(pieChart) pieChart.destroy();
+        pieChart=new Chart(el,{type:"doughnut",
+          data:{labels:["In stock","Below","Order extra"],datasets:[{data:[inStock,below.length,extra.length],
+            backgroundColor:["#7F9B6E","#C15B4A","#E0A43B"],borderWidth:2,borderColor:"#fff"}]},
+          options:{cutout:"62%",plugins:{legend:{display:false}},
+            onClick:(e,els)=>{ if(!els.length) return;
+              const i=els[0].index;
+              if(i===1) location.href="inventory.html?filter=below";
+              else if(i===2) location.href="inventory.html?filter=extra";
+              else location.href="inventory.html";
+            }}});
       });
     }
-
-    function toggleGroup(o) {
-      const g = document.getElementById("group-"+o);
-      const c = document.getElementById("caret-"+o);
-      const open = g.style.display !== "none";
-      g.style.display = open ? "none" : "block";
-      if (c) c.style.transform = open ? "rotate(0deg)" : "rotate(90deg)";
+    function loadChartJs(){
+      return new Promise(res=>{
+        if(window.Chart) return res();
+        const s=document.createElement("script");
+        s.src="https://cdn.jsdelivr.net/npm/chart.js@4"; s.onload=res; document.head.appendChild(s);
+      });
+    }
+    async function loadPredict(){
+      const el=document.getElementById("predictBody"); if(!el) return;
+      const { data:proj } = await sb.from("v_order_projection").select("*");
+      const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
+      const already=new Set([...below,...extra].map(i=>i.id));
+      const soon=(proj||[]).filter(p=>p.days_to_threshold!=null&&p.days_to_threshold>=0&&p.days_to_threshold<=7&&!already.has(p.id))
+        .sort((a,b)=>a.days_to_threshold-b.days_to_threshold).slice(0,5);
+      if(!soon.length){ el.innerHTML=`<div class="empty" style="padding:8px">Nothing projected to run low this week.<br><span class="stat-label">Gets smarter as counts build up.</span></div>`; return; }
+      el.innerHTML = soon.map(p=>`<div class="mini-item">
+        <span class="dot-tag" style="background:var(--honey)"></span>${p.name}
+        <span class="stat-label" style="margin-left:auto">~${p.days_to_threshold}d</span></div>`).join("");
     }
 
-    async function markOrdered(itemId) {
-      const { data: { user } } = await sb.auth.getUser();
-      // clear any prior needs_reorder/open row for this item, then open a fresh order
-      await sb.from("order_log").delete().eq("item_id", itemId).in("status", ["open","needs_reorder"]);
-      await sb.from("order_log").insert({ item_id: itemId, ordered_by: user.id });
-      await load();
+    // ---------- widget management ----------
+    function addWidget(w){ const l=getLayout(); if(!l.includes(w)){ l.push(w); saveLayout(l); renderDash(); } }
+    function removeWidget(w){ const l=getLayout().filter(x=>x!==w); saveLayout(l); renderDash(); }
+    function resetLayout(){ localStorage.removeItem(layoutKey()); renderDash(); }
+
+    // ---------- drag & drop (pointer-based, works touch + mouse) ----------
+    let dragW=null, dragEl=null;
+    function startDrag(e, w){
+      e.preventDefault();
+      dragW=w; dragEl=e.target.closest(".wcard"); dragEl.classList.add("dragging");
+      document.addEventListener("pointermove", onDragMove);
+      document.addEventListener("pointerup", endDrag, {once:true});
     }
-    async function unorder(itemId) {
-      // remove the open order (undo an accidental mark)
-      await sb.from("order_log").delete().eq("item_id", itemId).in("status", ["open","needs_reorder"]);
-      await load();
+    function onDragMove(e){
+      const grid=document.getElementById("grid"); if(!grid||!dragEl) return;
+      const cards=[...grid.querySelectorAll(".wcard:not(.dragging)")];
+      let target=null;
+      for(const c of cards){
+        const r=c.getBoundingClientRect();
+        if(e.clientY < r.top + r.height/2 && e.clientX < r.right){ target=c; break; }
+      }
+      cards.forEach(c=>c.classList.remove("drag-over"));
+      if(target){ target.classList.add("drag-over"); grid.insertBefore(dragEl, target); }
+      else grid.appendChild(dragEl);
+    }
+    function endDrag(){
+      document.removeEventListener("pointermove", onDragMove);
+      if(dragEl) dragEl.classList.remove("dragging");
+      document.querySelectorAll(".drag-over").forEach(c=>c.classList.remove("drag-over"));
+      // persist new order
+      const order=[...document.querySelectorAll("#grid .wcard")].map(c=>c.dataset.w);
+      saveLayout(order);
+      dragW=null; dragEl=null;
+    }
+
+    // ---------- fast order actions (update locally, no full reload) ----------
+    async function orderItem(itemId){
+      const { data:{user} } = await sb.auth.getUser();
+      // optimistic: update local state + just this widget immediately
+      DATA.orders[itemId] = { item_id:itemId, status:"open", ordered_at:new Date().toISOString(), ordered_by:user.id };
+      refreshWidget("to_order");
+      // fire db writes in background
+      await sb.from("order_log").delete().eq("item_id",itemId).in("status",["open","needs_reorder"]);
+      await sb.from("order_log").insert({ item_id:itemId, ordered_by:user.id });
+    }
+    async function unorderItem(itemId){
+      delete DATA.orders[itemId];
+      refreshWidget("to_order");
+      await sb.from("order_log").delete().eq("item_id",itemId).in("status",["open","needs_reorder"]);
+    }
+    // Re-render just one widget's body in place (keeps scroll + feels instant)
+    function refreshWidget(w){
+      const card=document.querySelector(`.wcard[data-w="${w}"] .wbody`);
+      if(!card||!WIDGETS[w]) return;
+      card.innerHTML = WIDGETS[w]().body;
+      if(w==="inventory_health") drawHealthPie();
     }
   </script>
 </body>

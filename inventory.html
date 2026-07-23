@@ -24,6 +24,12 @@
       MY_ROLE = profileJobRole(prof);   // baker / barista / cleaning (or null)
       // Admins default to All; staff default to My Items (if they have a role)
       SCOPE = IS_ADMIN ? "all" : (MY_ROLE ? "mine" : "all");
+      // Deep-link from dashboard pie: ?filter=below / ?filter=extra
+      const urlFilter = new URLSearchParams(location.search).get("filter");
+      if (urlFilter === "below" || urlFilter === "extra") {
+        FILTER = urlFilter;
+        SCOPE = "all";   // show across all items when arriving from a dashboard jump
+      }
       await renderTopbar("Inventory", prof);
       renderNav("inventory", IS_ADMIN);
       await load();
