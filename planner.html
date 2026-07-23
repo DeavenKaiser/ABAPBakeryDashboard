@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Prep Planner</title>
-  <link rel="stylesheet" href="style.css?v=1784837979">
+  <link rel="stylesheet" href="style.css?v=1784838562">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,10 +12,11 @@
   <div class="wrap" id="app"><div class="empty">Loading Prep Planner…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784837979"></script>
-  <script src="nav.js?v=1784837979"></script>
+  <script src="config.js?v=1784838562"></script>
+  <script src="nav.js?v=1784838562"></script>
   <script>
-    let IS_ADMIN=false, TAB="pricing", PRICING=[], SETTINGS=[];
+    let IS_ADMIN=false, TAB="calendar", PRICING=[], SETTINGS=[];
+    let PLAN=[], RECIPES=[], CAL_MONTH=null, PROJECTION=null;
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -24,9 +25,18 @@
       await renderTopbar("Prep Planner", prof);
       renderNav("planner", IS_ADMIN);
       if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
-      await loadPricing();
+      CAL_MONTH = new Date(); CAL_MONTH.setDate(1);
+      await Promise.all([loadPricing(), loadPlan()]);
       render();
     })();
+
+    async function loadPlan(){
+      const [{data:plan},{data:recs}] = await Promise.all([
+        sb.from("plan_entries").select("*").order("plan_date"),
+        sb.from("recipes").select("id,name,category").eq("active",true).order("name"),
+      ]);
+      PLAN = plan||[]; RECIPES = recs||[];
+    }
 
     async function loadPricing(){
       const [{data:pricing},{data:settings}] = await Promise.all([
@@ -45,13 +55,18 @@
 
       // sub-tabs (calendar/list/events come in later chunks)
       html+=`<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${tabBtn("pricing","Pricing")}
         ${tabBtn("calendar","Calendar")}
         ${tabBtn("list","List")}
+        ${tabBtn("projection","Projection")}
+        ${tabBtn("pricing","Pricing")}
         ${tabBtn("events","Events")}
       </div></div>`;
 
       if(TAB==="pricing") html+=pricingView();
+      else if(TAB==="calendar") html+=calendarView();
+      else if(TAB==="list") html+=listView();
+      else if(TAB==="projection") html+=projectionView();
+      else if(TAB==="events") html+=`<div class="card"><div class="empty">Events have their own screen.<br><a href="events.html"><button class="mini" style="margin-top:8px">Open Events →</button></a></div></div>`;
       else html+=`<div class="card"><div class="empty">The <strong>${TAB}</strong> view is coming in the next update.</div></div>`;
 
       app.innerHTML=html;
@@ -96,11 +111,160 @@
     }
 
     async function saveMargin(category, channel, pctValue){
-      const pct = Math.max(1, Number(pctValue))/100;   // store as fraction, guard >0
+      const pct = Math.max(1, Number(pctValue))/100;
       const col = channel==="retail" ? "retail_food_cost_pct" : "wholesale_food_cost_pct";
       await sb.from("pricing_settings").update({ [col]: pct, updated_at:new Date().toISOString() }).eq("category",category);
       await loadPricing();
       render();
+    }
+
+    // ---------- Calendar view ----------
+    function ymd(d){ return d.toISOString().slice(0,10); }
+    function entriesFor(dateStr){ return PLAN.filter(p=>p.plan_date===dateStr); }
+
+    function calendarView(){
+      const y=CAL_MONTH.getFullYear(), m=CAL_MONTH.getMonth();
+      const monthName=CAL_MONTH.toLocaleDateString(undefined,{month:"long",year:"numeric"});
+      const firstDow=new Date(y,m,1).getDay();
+      const daysInMonth=new Date(y,m+1,0).getDate();
+      const todayStr=ymd(new Date());
+
+      let html=`<div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <button class="mini secondary" onclick="shiftMonth(-1)">‹</button>
+          <strong style="font-family:'Fraunces',serif;font-size:18px">${monthName}</strong>
+          <button class="mini secondary" onclick="shiftMonth(1)">›</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">`;
+      ["S","M","T","W","T","F","S"].forEach(d=>html+=`<div class="stat-label" style="text-align:center;font-weight:700">${d}</div>`);
+      for(let i=0;i<firstDow;i++) html+=`<div></div>`;
+      for(let day=1;day<=daysInMonth;day++){
+        const dateStr=ymd(new Date(y,m,day));
+        const ents=entriesFor(dateStr);
+        const isToday=dateStr===todayStr;
+        html+=`<div onclick="openDay('${dateStr}')" style="min-height:64px;border:1px solid var(--line);border-radius:8px;padding:4px;cursor:pointer;${isToday?'border-color:var(--crust);border-width:2px':''};background:${ents.length?'#fbf3e6':'#fff'}">
+          <div style="font-size:12px;font-weight:700;${isToday?'color:var(--crust)':''}">${day}</div>
+          ${ents.slice(0,3).map(e=>`<div style="font-size:10px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.quantity}× ${e.recipe_name||"?"}</div>`).join("")}
+          ${ents.length>3?`<div style="font-size:10px;color:var(--crust)">+${ents.length-3} more</div>`:""}
+        </div>`;
+      }
+      html+=`</div><div class="stat-label" style="margin-top:10px">Tap a day to add what you're making.</div></div>`;
+      return html;
+    }
+    function shiftMonth(delta){ CAL_MONTH.setMonth(CAL_MONTH.getMonth()+delta); render(); }
+
+    // ---------- List view ----------
+    function listView(){
+      const todayStr=ymd(new Date());
+      const upcoming=PLAN.filter(p=>p.plan_date>=todayStr);
+      const byDate={};
+      upcoming.forEach(p=>{ (byDate[p.plan_date]||=[]).push(p); });
+      const dates=Object.keys(byDate).sort();
+      if(!dates.length) return `<div class="card"><div class="empty">Nothing planned yet.<br>Switch to Calendar and tap a day to start.</div></div>`;
+      let html="";
+      dates.forEach(d=>{
+        const dObj=new Date(d+"T00:00:00");
+        const label=dObj.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+        html+=`<h2 class="section">${label}</h2><div class="card">`;
+        byDate[d].forEach(e=>{
+          html+=`<div class="mini-item">
+            <span style="flex:1">${e.quantity}× ${e.recipe_name||"?"}</span>
+            <button class="mini secondary" style="padding:4px 10px" onclick="removeEntry(${e.id})">✕</button>
+          </div>`;
+        });
+        html+=`<button class="mini" style="margin-top:8px" onclick="openDay('${d}')">+ Add to this day</button></div>`;
+      });
+      return html;
+    }
+
+    // ---------- Projection view ----------
+    function projectionView(){
+      if (PROJECTION === null) {
+        sb.from("v_inventory_projection").select("*").then(({data})=>{
+          PROJECTION = data || [];
+          if (TAB==="projection") render();
+        });
+        return `<div class="card"><div class="empty">Calculating what you'll need…</div></div>`;
+      }
+      if (!PROJECTION.length) {
+        return `<div class="card"><div class="empty">Nothing planned yet, so nothing to project.<br>Add bakes on the Calendar and this will show what you'll need.</div></div>`;
+      }
+      const short = PROJECTION.filter(p=>p.status==="short");
+      const missing = PROJECTION.filter(p=>p.status==="not_in_inventory");
+      const checkU = PROJECTION.filter(p=>p.status==="check_units");
+      const ok = PROJECTION.filter(p=>p.status==="ok");
+
+      let html="";
+      html+=`<div class="card" style="background:${short.length||missing.length?'#fbeae7':'#e9f2e6'}">
+        <strong style="color:${short.length||missing.length?'var(--berry)':'var(--sage)'}">
+        ${short.length?`${short.length} ingredient${short.length===1?"":"s"} short for what's planned`:"You have enough for everything planned (where units match)"}</strong>
+        ${missing.length?`<div class="stat-label">${missing.length} planned ingredient${missing.length===1?"":"s"} not tracked in inventory</div>`:""}
+      </div>`;
+
+      function tbl(title, rows, showShort){
+        if(!rows.length) return "";
+        let h=`<h2 class="section">${title}</h2><div class="card"><div style="overflow-x:auto">
+          <table class="rpt"><tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${showShort?'<th class="num">Short by</th>':''}</tr>`;
+        rows.forEach(p=>{
+          h+=`<tr><td>${p.ingredient}</td>
+            <td class="num">${p.total_needed} ${p.needed_unit||""}</td>
+            <td class="num">${p.current_on_hand!=null?p.current_on_hand+" "+(p.inventory_unit||""):"—"}</td>
+            ${showShort?`<td class="num" style="color:var(--berry);font-weight:700">${p.shortfall!=null?p.shortfall+" "+(p.needed_unit||""):"—"}</td>`:""}</tr>`;
+        });
+        h+=`</table></div></div>`;
+        return h;
+      }
+
+      html+=tbl("Short — need to order", short, true);
+      html+=tbl("Units differ — please check", checkU, false);
+      html+=tbl("Not in inventory", missing, false);
+      if(ok.length) html+=`<h2 class="section">Covered (${ok.length})</h2>
+        <div class="card"><div class="stat-label">${ok.map(p=>p.ingredient).join(", ")}</div></div>`;
+
+      html+=`<div class="card"><div class="stat-label">Projection uses all planned bakes from today forward. "Units differ" means the recipe and inventory track that item in different units (e.g. grams vs pounds) — amounts are shown so you can judge, but no shortage is guessed.</div></div>`;
+      return html;
+    }
+
+    // ---------- Add/remove entries (day editor modal) ----------
+    function openDay(dateStr){
+      const dObj=new Date(dateStr+"T00:00:00");
+      const label=dObj.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
+      const ents=entriesFor(dateStr);
+      const overlay=document.createElement("div");
+      overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;z-index:100;padding:20px;overflow:auto";
+      overlay.innerHTML=`<div class="card" style="max-width:460px;width:100%;margin:20px 0">
+        <h2 class="section" style="margin-top:0">${label}</h2>
+        <div id="dayList">${ents.map(e=>`<div class="mini-item"><span style="flex:1">${e.quantity}× ${e.recipe_name||"?"}</span>
+          <button class="mini secondary" style="padding:4px 10px" onclick="removeEntry(${e.id},'${dateStr}')">✕</button></div>`).join("")||'<div class="stat-label">Nothing yet.</div>'}</div>
+        <div style="display:flex;gap:6px;margin-top:12px">
+          <select id="dayRecipe" style="flex:2;font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
+            ${RECIPES.map(r=>`<option value="${r.id}">${r.name}</option>`).join("")}
+          </select>
+          <input type="number" id="dayQty" value="1" min="1" step="1" style="width:70px" placeholder="qty">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+          <button class="mini secondary" onclick="this.closest('div[style*=fixed]').remove()">Close</button>
+          <button class="mini" onclick="addEntry('${dateStr}')">Add</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+    }
+    async function addEntry(dateStr){
+      const rid=Number(document.getElementById("dayRecipe").value);
+      const qty=Math.max(1,Number(document.getElementById("dayQty").value)||1);
+      const rec=RECIPES.find(r=>r.id===rid);
+      const { data:{user} } = await sb.auth.getUser();
+      await sb.from("plan_entries").insert({ plan_date:dateStr, recipe_id:rid, recipe_name:rec?rec.name:null, quantity:qty, created_by:user.id });
+      await loadPlan(); PROJECTION=null;
+      document.querySelector("div[style*=fixed]").remove();
+      render();
+    }
+    async function removeEntry(id, reopenDate){
+      await sb.from("plan_entries").delete().eq("id",id);
+      await loadPlan(); PROJECTION=null;
+      const modal=document.querySelector("div[style*=fixed]"); if(modal) modal.remove();
+      render();
+      if(reopenDate) openDay(reopenDate);
     }
   </script>
 </body>

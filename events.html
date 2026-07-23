@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Events</title>
+  <link rel="stylesheet" href="style.css?v=1784838562">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading events…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1784838562"></script>
+  <script src="nav.js?v=1784838562"></script>
+  <script>
+    let IS_ADMIN=false, EVENTS=[], EITEMS=[], ME=null;
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      ME = prof; IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Events", prof);
+      renderNav("events", IS_ADMIN);
+      // opportunistic auto-archive of past events
+      try { await sb.rpc("archive_past_events"); } catch(e){}
+      await load();
+    })();
+
+    async function load(){
+      const [{data:evs},{data:items}] = await Promise.all([
+        sb.from("events").select("*").neq("status","archived").order("event_date"),
+        sb.from("event_items").select("*"),
+      ]);
+      EVENTS = evs||[]; EITEMS = items||[];
+      render();
+    }
+
+    function render(){
+      const app=document.getElementById("app");
+      let html=`<div class="hero" style="padding:18px 22px">
+        <div><h1 style="font-size:22px">Events</h1>
+        <div class="sub">Cake deliveries, classes, fairs & parties</div></div>
+        <button class="mini" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4)" onclick="openForm()">+ Add event</button>
+      </div>`;
+
+      const approved=EVENTS.filter(e=>e.status==="approved");
+      const pending=EVENTS.filter(e=>e.status==="pending");
+
+      if(IS_ADMIN && pending.length){
+        html+=`<h2 class="section">Awaiting your approval (${pending.length})</h2>`;
+        pending.forEach(e=>html+=eventCard(e,true));
+      }
+
+      html+=`<h2 class="section">Upcoming</h2>`;
+      if(!approved.length) html+=`<div class="card"><div class="empty">No upcoming events yet.</div></div>`;
+      else approved.forEach(e=>html+=eventCard(e,false));
+
+      // non-admins see their own pending submissions
+      if(!IS_ADMIN){
+        const mine=pending.filter(e=>e.submitted_by===(ME&&ME.id));
+        if(mine.length){ html+=`<h2 class="section">Your submissions (awaiting approval)</h2>`; mine.forEach(e=>html+=eventCard(e,false)); }
+      }
+
+      app.innerHTML=html;
+    }
+
+    function eventCard(e, showApprove){
+      const items=EITEMS.filter(i=>i.event_id===e.id);
+      const dObj=new Date(e.event_date+"T00:00:00");
+      const dateLabel=dObj.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+      return `<div class="wcard" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1">
+            <div style="font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso)">${e.title}</div>
+            <div class="stat-label">${dateLabel}${e.event_time?" · "+e.event_time:""}${e.location?" · "+e.location:""}</div>
+            ${e.description?`<div style="font-size:14px;margin-top:6px">${e.description.replace(/</g,"&lt;")}</div>`:""}
+            ${items.length?`<div style="margin-top:8px"><div class="stat-label" style="font-weight:700">Needs:</div>
+              ${items.map(i=>`<div class="stat-label">• ${i.amount!=null?i.amount+" "+(i.unit||""):""} ${i.item_name}</div>`).join("")}</div>`:""}
+            ${e.status==="pending"?`<span class="pill" style="background:#fff3d6;color:#a07d2c;margin-top:6px;display:inline-block">pending approval</span>`:""}
+          </div>
+        </div>
+        ${showApprove?`<div style="display:flex;gap:8px;margin-top:10px">
+          <button class="mini" onclick="approve(${e.id})">Approve</button>
+          <button class="mini secondary" onclick="rejectEvent(${e.id})">Reject</button>
+        </div>`:(IS_ADMIN?`<div style="margin-top:10px"><button class="mini secondary" onclick="rejectEvent(${e.id})">Remove</button></div>`:"")}
+      </div>`;
+    }
+
+    // ---------- add event form ----------
+    function openForm(){
+      const overlay=document.createElement("div");
+      overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;z-index:100;padding:20px;overflow:auto";
+      overlay.innerHTML=`<div class="card" style="max-width:480px;width:100%;margin:20px 0">
+        <h2 class="section" style="margin-top:0">New event</h2>
+        <div class="field"><label>Title</label><input type="text" id="evTitle" placeholder="Cake delivery, Sourdough class…"></div>
+        <div class="field"><label>Date</label><input type="date" id="evDate"></div>
+        <div class="field"><label>Time (optional)</label><input type="text" id="evTime" placeholder="2:00 PM"></div>
+        <div class="field"><label>Location (optional)</label><input type="text" id="evLoc"></div>
+        <div class="field"><label>Details (optional)</label><textarea id="evDesc" style="width:100%;min-height:56px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:inherit"></textarea></div>
+        <label class="stat-label">Supplies needed (optional — feeds the shopping list)</label>
+        <div id="evItems"></div>
+        <button class="mini secondary" style="margin-top:6px" onclick="addEvItemRow()">+ Add supply</button>
+        <div class="error" id="evErr" style="min-height:auto;margin-top:10px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+          <button class="mini secondary" onclick="this.closest('div[style*=fixed]').remove()">Cancel</button>
+          <button class="mini" onclick="submitEvent()">Submit${IS_ADMIN?" & approve":" for approval"}</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      window.__evItems=overlay.querySelector("#evItems");
+    }
+    function addEvItemRow(){
+      const wrap=window.__evItems; if(!wrap) return;
+      const row=document.createElement("div");
+      row.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+      row.innerHTML=`<input type="text" placeholder="item" class="ev-name" style="flex:2">
+        <input type="number" step="any" placeholder="amt" class="ev-amt" style="flex:1">
+        <input type="text" placeholder="unit" class="ev-unit" style="width:56px">
+        <button class="mini secondary" style="padding:4px 8px" onclick="this.parentElement.remove()">✕</button>`;
+      wrap.appendChild(row);
+    }
+    async function submitEvent(){
+      const title=document.getElementById("evTitle").value.trim();
+      const date=document.getElementById("evDate").value;
+      const err=document.getElementById("evErr");
+      if(!title||!date){ err.textContent="Title and date are required."; return; }
+      const { data:{user} } = await sb.auth.getUser();
+      const status = IS_ADMIN ? "approved" : "pending";
+      const {data:ev,error}=await sb.from("events").insert({
+        title, event_date:date,
+        event_time:document.getElementById("evTime").value.trim()||null,
+        location:document.getElementById("evLoc").value.trim()||null,
+        description:document.getElementById("evDesc").value.trim()||null,
+        status, submitted_by:user.id, approved_by: IS_ADMIN?user.id:null
+      }).select().single();
+      if(error){ err.textContent=error.message; return; }
+      const rows=[...document.querySelectorAll("#evItems > div")].map(r=>({
+        event_id:ev.id,
+        item_name:r.querySelector(".ev-name").value.trim(),
+        amount:r.querySelector(".ev-amt").value===""?null:Number(r.querySelector(".ev-amt").value),
+        unit:r.querySelector(".ev-unit").value.trim()||null
+      })).filter(r=>r.item_name);
+      if(rows.length) await sb.from("event_items").insert(rows);
+      document.querySelector("div[style*=fixed]").remove();
+      await load();
+    }
+    async function approve(id){
+      const { data:{user} } = await sb.auth.getUser();
+      await sb.from("events").update({status:"approved", approved_by:user.id}).eq("id",id);
+      await load();
+    }
+    async function rejectEvent(id){
+      if(!confirm("Remove this event?")) return;
+      await sb.from("events").delete().eq("id",id);
+      await load();
+    }
+  </script>
+</body>
+</html>

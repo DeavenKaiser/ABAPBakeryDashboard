@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipe Book</title>
-  <link rel="stylesheet" href="style.css?v=1784837979">
+  <link rel="stylesheet" href="style.css?v=1784838562">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading recipes…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784837979"></script>
-  <script src="nav.js?v=1784837979"></script>
+  <script src="config.js?v=1784838562"></script>
+  <script src="nav.js?v=1784838562"></script>
   <script>
     let IS_ADMIN=false, RECIPES=[], INGREDIENTS=[], INV={};
     let CATFILTER="all", SORTBY="name", SEARCH="";
@@ -135,6 +135,7 @@
             <div class="stat-label" style="margin-top:8px">dot shows live inventory: <span style="color:var(--sage)">●</span> in stock · <span style="color:var(--berry)">●</span> low</div>
             ${IS_ADMIN?`<div style="margin-top:10px;display:flex;gap:8px">
               <button class="mini secondary" onclick="openEditor(${r.id})">Edit</button>
+              <button class="mini" onclick="planRecipe(${r.id},'${(r.name||"").replace(/'/g,"")}')">Add to plan</button>
               <button class="mini" style="background:var(--berry)" onclick="deleteRecipe(${r.id},'${(r.name||"").replace(/'/g,"")}')">Delete</button>
             </div>`:""}
           </div>
@@ -213,6 +214,33 @@
       if(!confirm("Delete recipe: "+name+"?")) return;
       await sb.from("recipes").delete().eq("id",id);
       await load();
+    }
+
+    // Quick "add this recipe to a production day" from the recipe card
+    function planRecipe(id, name){
+      const today=new Date().toISOString().slice(0,10);
+      const overlay=document.createElement("div");
+      overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px";
+      overlay.innerHTML=`<div class="card" style="max-width:360px;width:100%;margin:0">
+        <h2 class="section" style="margin-top:0">Add "${name}" to plan</h2>
+        <div class="field"><label>Day</label><input type="date" id="planDate" value="${today}"></div>
+        <div class="field"><label>Quantity</label><input type="number" id="planQty" value="1" min="1" step="1"></div>
+        <div class="error" id="planErr" style="min-height:auto"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="mini secondary" onclick="this.closest('div[style*=fixed]').remove()">Cancel</button>
+          <button class="mini" id="planSave">Add to plan</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector("#planSave").onclick=async()=>{
+        const date=overlay.querySelector("#planDate").value;
+        const qty=Math.max(1,Number(overlay.querySelector("#planQty").value)||1);
+        if(!date){ overlay.querySelector("#planErr").textContent="Pick a day."; return; }
+        const { data:{user} } = await sb.auth.getUser();
+        const {error}=await sb.from("plan_entries").insert({ plan_date:date, recipe_id:id, recipe_name:name, quantity:qty, created_by:user.id });
+        if(error){ overlay.querySelector("#planErr").textContent=error.message; return; }
+        overlay.remove();
+      };
     }
   </script>
 </body>
