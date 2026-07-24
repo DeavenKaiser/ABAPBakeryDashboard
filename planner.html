@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Prep Planner</title>
-  <link rel="stylesheet" href="style.css?v=1784861599">
+  <link rel="stylesheet" href="style.css?v=1784906569">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading Prep Planner…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784861599"></script>
-  <script src="nav.js?v=1784861599"></script>
+  <script src="config.js?v=1784906569"></script>
+  <script src="nav.js?v=1784906569"></script>
   <script>
     let IS_ADMIN=false, TAB="calendar", PRICING=[], SETTINGS=[];
     let PLAN=[], RECIPES=[], CAL_MONTH=null, PROJECTION=null;
@@ -23,7 +23,7 @@
       const prof = await getMyProfile();
       IS_ADMIN = prof && prof.role==="admin";
       await renderTopbar("Prep Planner", prof);
-      renderNav("planner", IS_ADMIN);
+      renderNav("events", IS_ADMIN);
       if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
       CAL_MONTH = new Date(); CAL_MONTH.setDate(1);
       await Promise.all([loadPricing(), loadPlan()]);
@@ -51,23 +51,22 @@
       let html=`<div class="hero" style="padding:18px 22px">
         <div><h1 style="font-size:22px">Prep Planner</h1>
         <div class="sub">Plan production, project inventory, set pricing</div></div>
+        <a href="events.html" style="text-decoration:none"><button class="mini" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4)">← Agenda</button></a>
       </div>`;
 
-      // sub-tabs (calendar/list/events come in later chunks)
+      // sub-tabs
       html+=`<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px;flex-wrap:wrap">
         ${tabBtn("calendar","Calendar")}
         ${tabBtn("list","List")}
         ${tabBtn("projection","Projection")}
         ${tabBtn("pricing","Pricing")}
-        ${tabBtn("events","Events")}
       </div></div>`;
 
       if(TAB==="pricing") html+=pricingView();
       else if(TAB==="calendar") html+=calendarView();
       else if(TAB==="list") html+=listView();
       else if(TAB==="projection") html+=projectionView();
-      else if(TAB==="events") html+=`<div class="card"><div class="empty">Events have their own screen.<br><a href="events.html"><button class="mini" style="margin-top:8px">Open Events →</button></a></div></div>`;
-      else html+=`<div class="card"><div class="empty">The <strong>${TAB}</strong> view is coming in the next update.</div></div>`;
+      else html+=`<div class="card"><div class="empty">Pick a view above.</div></div>`;
 
       app.innerHTML=html;
     }

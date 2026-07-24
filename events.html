@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Events</title>
-  <link rel="stylesheet" href="style.css?v=1784861599">
+  <link rel="stylesheet" href="style.css?v=1784906569">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading events…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784861599"></script>
-  <script src="nav.js?v=1784861599"></script>
+  <script src="config.js?v=1784906569"></script>
+  <script src="nav.js?v=1784906569"></script>
   <script>
     let IS_ADMIN=false, EVENTS=[], EITEMS=[], ME=null, SETUP_OK=true, LOAD_ERR="";
 
@@ -21,7 +21,7 @@
       if (!(await requireLogin())) return;
       const prof = await getMyProfile();
       ME = prof; IS_ADMIN = prof && prof.role==="admin";
-      await renderTopbar("Events", prof);
+      await renderTopbar("Agenda", prof);
       renderNav("events", IS_ADMIN);
       try { await sb.rpc("archive_past_events"); } catch(e){ /* function may not exist yet */ }
       await load();
@@ -47,9 +47,12 @@
     function render(){
       const app=document.getElementById("app");
       let html=`<div class="hero" style="padding:18px 22px">
-        <div><h1 style="font-size:22px">Events</h1>
-        <div class="sub">Cake deliveries, classes, fairs & parties</div></div>
-        <button class="mini" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4)" onclick="openForm()">+ Add event</button>
+        <div><h1 style="font-size:22px">Agenda</h1>
+        <div class="sub">Events, deliveries, classes & production</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="mini" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4)" onclick="openForm()">+ Add event</button>
+          ${IS_ADMIN?`<a href="planner.html" style="text-decoration:none"><button class="mini" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4)">Prep Planner →</button></a>`:""}
+        </div>
       </div>`;
 
       if (!SETUP_OK) {

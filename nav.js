@@ -7,7 +7,7 @@ function renderNav(active, isAdmin) {
     { id: "mytasks",   href: "mytasks.html",   ico: "☰", label: "Tasks" },
     { id: "inventory", href: "inventory.html", ico: "▦", label: "Inventory" },
     { id: "recipes",   href: "recipes.html",   ico: "❦", label: "Recipes" },
-    { id: "events",    href: "events.html",    ico: "◈", label: "Events" },
+    { id: "events",    href: "events.html",    ico: "◈", label: "Agenda" },
   ];
   if (isAdmin) {
     tabs.push({ id: "shopping", href: "shopping.html", ico: "▤", label: "Shopping" });
@@ -21,7 +21,7 @@ function renderNav(active, isAdmin) {
 
   // Admin: group the occasional tools (Reports, Team) under a "More" menu
   if (isAdmin) {
-    const moreActive = (active === "reports" || active === "team" || active === "planner") ? "active" : "";
+    const moreActive = (active === "reports" || active === "team") ? "active" : "";
     const more = document.createElement("a");
     more.href = "#";
     more.className = moreActive;
@@ -42,7 +42,6 @@ function toggleMoreMenu() {
     "position:fixed;right:12px;bottom:70px;background:#fff;border:1px solid var(--line);"+
     "border-radius:14px;box-shadow:0 8px 30px rgba(61,46,35,.18);z-index:50;overflow:hidden;min-width:160px";
   menu.innerHTML = `
-    <a href="planner.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>◷</span> Prep Planner</a>
     <a href="reports.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>$</span> Reports</a>
     <a href="team.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso)"><span>☺</span> Manage Team</a>`;
   document.body.appendChild(menu);
