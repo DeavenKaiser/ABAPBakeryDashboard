@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ABAP Bakery — Sign In</title>
-  <link rel="stylesheet" href="style.css?v=1784906569">
+  <link rel="stylesheet" href="style.css?v=1784909438">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -27,7 +27,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784906569"></script>
+  <script src="config.js?v=1784909438"></script>
   <script>
     // If already signed in, skip straight to the app.
     (async () => {
@@ -36,6 +36,11 @@
     })();
 
     const err = document.getElementById("err");
+    // Friendly note if we arrived here from an inactivity timeout
+    if (new URLSearchParams(location.search).get("timeout") === "1") {
+      err.textContent = "You were signed out after 30 minutes of inactivity. Please sign in again.";
+      err.style.color = "#6B4F3A";
+    }
     document.getElementById("loginBtn").addEventListener("click", doLogin);
     document.getElementById("password").addEventListener("keydown", e => {
       if (e.key === "Enter") doLogin();

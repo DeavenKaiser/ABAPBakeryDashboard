@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Prep Planner</title>
-  <link rel="stylesheet" href="style.css?v=1784906569">
+  <link rel="stylesheet" href="style.css?v=1784909438">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading Prep Planner…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784906569"></script>
-  <script src="nav.js?v=1784906569"></script>
+  <script src="config.js?v=1784909438"></script>
+  <script src="nav.js?v=1784909438"></script>
   <script>
     let IS_ADMIN=false, TAB="calendar", PRICING=[], SETTINGS=[];
     let PLAN=[], RECIPES=[], CAL_MONTH=null, PROJECTION=null;
@@ -231,7 +231,7 @@
       if(ok.length) html+=`<h2 class="section">Covered (${ok.length})</h2>
         <div class="card"><div class="stat-label">${ok.map(p=>p.ingredient).join(", ")}</div></div>`;
 
-      html+=`<div class="card"><div class="stat-label">Projection uses all planned bakes from today forward. "Units differ" means the recipe and inventory track that item in different units (e.g. grams vs pounds) — amounts are shown so you can judge, but no shortage is guessed.</div></div>`;
+      html+=`<div class="card"><div class="stat-label">Projection uses all planned bakes and approved events from today forward. Weight (g, kg, oz, lb) and volume units convert automatically, so grams-vs-pounds compares correctly. "Units differ" now only shows for units we can't convert (e.g. a custom unit) — the amounts are shown so you can judge.</div></div>`;
       return html;
     }
 

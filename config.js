@@ -58,6 +58,52 @@ async function signOut() {
   window.location.href = "index.html";
 }
 
+// ---- Auto-logout after 30 minutes of inactivity ----
+// Resets on any real user activity. Warns shortly before logging out.
+(function initIdleLogout(){
+  const IDLE_MS = 30 * 60 * 1000;      // 30 minutes
+  const WARN_MS = 60 * 1000;           // warn 1 minute before
+  let idleTimer, warnTimer, warnEl;
+
+  function doLogout(){
+    try { sb.auth.signOut(); } catch(e){}
+    window.location.href = "index.html?timeout=1";
+  }
+  function showWarning(){
+    if (warnEl) return;
+    warnEl = document.createElement("div");
+    warnEl.style.cssText =
+      "position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#3D2E23;color:#fff;"+
+      "padding:12px 18px;border-radius:12px;z-index:9999;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);text-align:center;max-width:90%";
+    warnEl.innerHTML = "You'll be signed out soon for inactivity.<br><button style='margin-top:8px;background:#E0A43B;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer'>Stay signed in</button>";
+    warnEl.querySelector("button").onclick = reset;
+    document.body.appendChild(warnEl);
+  }
+  function clearWarning(){ if (warnEl){ warnEl.remove(); warnEl=null; } }
+
+  function reset(){
+    clearTimeout(idleTimer); clearTimeout(warnTimer); clearWarning();
+    warnTimer = setTimeout(showWarning, IDLE_MS - WARN_MS);
+    idleTimer = setTimeout(doLogout, IDLE_MS);
+  }
+
+  let lastReset = 0;
+  function onActivity(){
+    const now = Date.now();
+    if (warnEl) clearWarning();
+    // throttle: only actually reset the timers at most once every 5s
+    if (now - lastReset < 5000) return;
+    lastReset = now;
+    reset();
+  }
+  ["click","keydown","mousemove","scroll","touchstart","pointerdown"].forEach(ev =>
+    window.addEventListener(ev, onActivity, { passive:true })
+  );
+  // start once the page loads
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", reset);
+  else reset();
+})();
+
 // Job-role vocabulary shared across screens.
 const ROLES = ["baker", "barista", "cleaning"];
 const JOB_ROLES = ROLES;  // alias
@@ -77,14 +123,43 @@ function profileJobRole(prof) {
 
 // ---- Admin edit mode (off by default; per-session, per-tab) ----
 function editMode() { return sessionStorage.getItem("editMode") === "on"; }
-function setEditMode(on) { sessionStorage.setItem("editMode", on ? "on" : "off"); }
+function setEditMode(on) {
+  sessionStorage.setItem("editMode", on ? "on" : "off");
+  if (on) { startEditModeTimeout(); } else { stopEditModeTimeout(); }
+}
+
+// Edit mode auto-reverts to view-only after 2 minutes of inactivity, so an
+// admin who walks away can't leave the app in an editable state.
+let _editIdleTimer = null, _editLastActivity = 0;
+const EDIT_IDLE_MS = 2 * 60 * 1000;
+function startEditModeTimeout() {
+  stopEditModeTimeout();
+  _editLastActivity = Date.now();
+  const check = () => {
+    if (!editMode()) { stopEditModeTimeout(); return; }
+    if (Date.now() - _editLastActivity >= EDIT_IDLE_MS) {
+      setEditMode(false);
+      location.reload();   // drop back to view-only
+      return;
+    }
+    _editIdleTimer = setTimeout(check, 10000);  // re-check every 10s
+  };
+  const bump = () => { _editLastActivity = Date.now(); };
+  ["click","keydown","mousemove","scroll","touchstart","pointerdown"].forEach(ev =>
+    window.addEventListener(ev, bump, { passive:true })
+  );
+  _editIdleTimer = setTimeout(check, 10000);
+}
+function stopEditModeTimeout() { if (_editIdleTimer) { clearTimeout(_editIdleTimer); _editIdleTimer = null; } }
+// If a page loads already in edit mode (sessionStorage), start the watchdog.
+if (typeof window !== "undefined" && editMode()) { startEditModeTimeout(); }
 
 // Render a small edit-mode toggle into a container; calls onChange when flipped.
 function editToggleHtml() {
   const on = editMode();
   return `<label class="tbtn ${on?"on extra":""}" style="margin:0">
     <input type="checkbox" ${on?"checked":""} onchange="toggleEdit(this.checked)" style="display:none">
-    <span class="dot">${on?"✏️":"🔒"}</span> ${on?"Editing ON":"View only"}
+    <span class="dot">${on?"✎":"○"}</span> ${on?"Editing ON":"View only"}
   </label>`;
 }
 function toggleEdit(on) { setEditMode(on); location.reload(); }
