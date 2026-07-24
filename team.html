@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Manage Team</title>
-  <link rel="stylesheet" href="style.css?v=1784909995">
+  <link rel="stylesheet" href="style.css?v=1784931130">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784909995"></script>
-  <script src="nav.js?v=1784909995"></script>
+  <script src="config.js?v=1784931130"></script>
+  <script src="nav.js?v=1784931130"></script>
   <script>
     let IS_ADMIN=false;
     (async () => {
@@ -104,6 +104,13 @@
       }
       const users = r.users || [];
 
+      // Load tasks for the duplicate-check panel
+      let DUPE_HTML = "";
+      try {
+        const { data: tasks } = await sb.from("tasks").select("id,owner,frequency,text,active").eq("active", true);
+        DUPE_HTML = buildDupePanel(tasks || []);
+      } catch(e){ DUPE_HTML = ""; }
+
       let html = `<h2 class="section">Add a team member</h2>
         <div class="card">
           <div class="field"><label>Full name</label>
@@ -148,7 +155,70 @@
         </div>`;
       });
       html += `</div>`;
+      html += DUPE_HTML;
       app.innerHTML = html;
+    }
+
+    // ---- Duplicate task check ----
+    function buildDupePanel(tasks){
+      const norm = t => (t.text||"").toLowerCase().trim();
+      // group by normalized text
+      const byText = {};
+      tasks.forEach(t => { (byText[norm(t)] ||= []).push(t); });
+
+      const crossOwner = [];   // same text, different owners (likely true dupe)
+      const sameOwnerDiffFreq = []; // same text+owner diff freq (maybe legit: weekly vs monthly)
+      Object.values(byText).forEach(group => {
+        if (group.length < 2) return;
+        const owners = new Set(group.map(t=>t.owner));
+        const freqs = new Set(group.map(t=>t.frequency));
+        if (owners.size > 1) crossOwner.push(group);
+        else if (freqs.size > 1) sameOwnerDiffFreq.push(group);
+        else crossOwner.push(group); // exact dupes under same owner+freq
+      });
+
+      if (!crossOwner.length && !sameOwnerDiffFreq.length) {
+        return `<h2 class="section">Duplicate check</h2><div class="card"><div class="empty">No duplicate tasks found. 🎉</div></div>`;
+      }
+
+      let h = `<h2 class="section">Duplicate check</h2>`;
+      if (crossOwner.length) {
+        h += `<div class="card"><div class="stat-label" style="margin-bottom:8px;font-weight:700">Likely duplicates — same task in more than one place</div>`;
+        crossOwner.forEach(group => {
+          h += `<div style="border-bottom:1px solid var(--line);padding:8px 0">
+            <div style="font-weight:600">${group[0].text}</div>`;
+          group.forEach(t => {
+            h += `<div class="mini-item">
+              <span class="stat-label" style="flex:1">${roleLabel(t.owner)} · ${t.frequency}</span>
+              <button class="mini" style="background:var(--red);padding:3px 9px" onclick="removeTask(${t.id})">Remove this copy</button>
+            </div>`;
+          });
+          h += `</div>`;
+        });
+        h += `</div>`;
+      }
+      if (sameOwnerDiffFreq.length) {
+        h += `<div class="card"><div class="stat-label" style="margin-bottom:8px;font-weight:700">Same task at different frequencies — often legitimate</div>
+          <div class="stat-label" style="margin-bottom:8px">e.g. a weekly light clean vs a monthly deep clean. Keep both unless it's truly a dupe.</div>`;
+        sameOwnerDiffFreq.forEach(group => {
+          h += `<div style="border-bottom:1px solid var(--line);padding:8px 0"><div style="font-weight:600">${group[0].text}</div>`;
+          group.forEach(t => {
+            h += `<div class="mini-item">
+              <span class="stat-label" style="flex:1">${roleLabel(t.owner)} · ${t.frequency}</span>
+              <button class="mini secondary" style="padding:3px 9px" onclick="removeTask(${t.id})">Remove</button>
+            </div>`;
+          });
+          h += `</div>`;
+        });
+        h += `</div>`;
+      }
+      return h;
+    }
+    async function removeTask(id){
+      if(!confirm("Remove this task copy? (You can re-add it later if needed.)")) return;
+      const { error } = await sb.from("tasks").update({ active:false }).eq("id",id);
+      if (error) { alert("Couldn't remove: "+error.message); return; }
+      load();
     }
 
     async function addUser() {

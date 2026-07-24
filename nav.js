@@ -151,3 +151,20 @@ async function renderTopbar(title, prof) {
     pulling = false;
   }, { passive: true });
 })();
+
+// ---- Shared filter/sort dropdown helper ----
+// Toggles a dropdown menu; closes others and closes on outside click.
+function fsToggle(btn){
+  const drop = btn.closest(".fs-drop");
+  const menu = drop.querySelector(".fs-menu");
+  const isOpen = menu.style.display === "block";
+  // close all open menus first
+  document.querySelectorAll(".fs-menu").forEach(m=>m.style.display="none");
+  if (isOpen) return;
+  menu.style.display = "block";
+  setTimeout(()=>{
+    document.addEventListener("click", function close(e){
+      if (!drop.contains(e.target)) { menu.style.display="none"; document.removeEventListener("click", close); }
+    });
+  }, 0);
+}

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=1784909995">
+  <link rel="stylesheet" href="style.css?v=1784931130">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading your day…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784909995"></script>
-  <script src="nav.js?v=1784909995"></script>
+  <script src="config.js?v=1784931130"></script>
+  <script src="nav.js?v=1784931130"></script>
   <script>
     // ---------- state ----------
     let PROF=null, IS_ADMIN=false, MY_ROLE=null, DATA={};
@@ -26,15 +26,20 @@
       await renderTopbar("Dashboard", PROF);
       renderNav("dashboard", IS_ADMIN);
       await loadData();
+      await loadLayout();
       renderDash();
     })();
 // ---------- one-time data load ----------
     async function loadData() {
-      const [{data:items},{data:tasks}] = await Promise.all([
+      // clear any expired special tasks first (best-effort)
+      try { await sb.rpc("clear_expired_special_tasks"); } catch(e){}
+      const [{data:items},{data:tasks},specialRes] = await Promise.all([
         sb.from("inventory_items").select("*"),
         sb.from("tasks").select("*").eq("active",true),
+        sb.from("special_tasks").select("*").order("due_date",{nullsFirst:false}).order("created_at"),
       ]);
       DATA.items = items||[]; DATA.tasks = tasks||[];
+      DATA.special = (specialRes && specialRes.data) || [];
 
       // completions for current periods
       const done = new Set();
@@ -120,7 +125,7 @@
         return { title:"My tasks today", body:`
           <div class="stat-row"><div class="stat-big">${doneN}/${mine.length}</div><div class="stat-label">${p}% done</div></div>
           <div class="progress-wrap" style="margin-top:10px"><div class="progress-bar" style="width:${p}%"></div></div>
-          <a href="mytasks.html"><button class="mini" style="margin-top:12px">Go to my tasks →</button></a>` };
+          <button class="mini" style="margin-top:12px" onclick="location.href='mytasks.html'">Go to my tasks →</button>` };
       },
       shift_progress: () => {
         const shift = DATA.tasks.filter(t=>t.owner==="shared" && t.frequency==="each_shift");
@@ -134,8 +139,36 @@
       handoff: () => ({ title:"Shift note", body:
         DATA.note && DATA.note.trim()
           ? `<div style="font-size:15px;line-height:1.4;white-space:pre-wrap">${DATA.note.replace(/</g,"&lt;")}</div>
-             <a href="mytasks.html"><button class="mini secondary" style="margin-top:10px">Edit note</button></a>`
+             <button class="mini secondary" style="margin-top:10px" onclick="location.href='mytasks.html'">Edit note</button>`
           : `<div class="empty" style="padding:12px">No note right now.<br><a href="mytasks.html">Leave one for the next shift →</a></div>` }),
+      special_tasks: () => {
+        const list = DATA.special || [];
+        let body = "";
+        // admin gets an add box
+        if (IS_ADMIN) {
+          body += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+            <input type="text" id="stText" placeholder="Add a special task…" style="flex:2;min-width:140px">
+            <input type="date" id="stDate" title="complete by (optional)" style="flex:1">
+            <button class="mini" onclick="addSpecial()">Add</button>
+          </div>`;
+        }
+        if (!list.length) {
+          body += `<div class="empty" style="padding:8px">${IS_ADMIN?"No special tasks posted.":"Nothing special today. 🌿"}</div>`;
+        } else {
+          body += list.map(st => {
+            const due = st.due_date ? new Date(st.due_date+"T00:00:00").toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "";
+            return `<div class="mini-item" style="align-items:flex-start">
+              <input type="checkbox" ${st.done?"checked":""} onchange="toggleSpecial(${st.id}, this.checked)" style="margin-top:3px">
+              <div style="flex:1">
+                <span style="${st.done?'text-decoration:line-through;color:#aaa':''}">${st.text.replace(/</g,"&lt;")}</span>
+                ${due?`<div class="stat-label">by ${due}</div>`:""}
+              </div>
+              ${IS_ADMIN?`<button class="mini secondary" style="padding:3px 8px" onclick="delSpecial(${st.id})">✕</button>`:""}
+            </div>`;
+          }).join("");
+        }
+        return { title:"Special tasks", body };
+      },
       my_inventory: () => {
         if(!MY_ROLE) return { title:"My inventory", body:`<div class="empty" style="padding:12px">No job role assigned yet.</div>` };
         const mine = DATA.items.filter(i=>i.owner===MY_ROLE);
@@ -146,7 +179,7 @@
             <div><div class="stat-big" style="font-size:30px">${low.length}</div><div class="stat-label">below threshold</div></div>
             <div><div class="stat-big" style="font-size:30px">${toCount.length}</div><div class="stat-label">left to count</div></div>
           </div>
-          <a href="inventory.html"><button class="mini" style="margin-top:12px">Open inventory →</button></a>` };
+          <button class="mini" style="margin-top:12px" onclick="location.href='inventory.html'">Open inventory →</button>` };
       },
       countdown: () => {
         // Countdown to inventory day(s). Staff: their own. Admin: all roles that have one.
@@ -203,7 +236,7 @@
         const val=DATA.items.reduce((s,i)=>s+((i.unit_cost!=null&&i.current_on_hand!=null)?i.unit_cost*i.current_on_hand:0),0);
         return { title:" Stock value", body:`
           <div class="stat-big">$${val.toFixed(2)}</div><div class="stat-label">current inventory on hand</div>
-          <a href="reports.html"><button class="mini" style="margin-top:12px">Full reports →</button></a>` };
+          <button class="mini" style="margin-top:12px" onclick="location.href='reports.html'">Full reports →</button>` };
       },
       to_order: () => {
         const below=DATA.items.filter(isBelow), extra=DATA.items.filter(i=>i.order_extra);
@@ -215,7 +248,7 @@
         else body=`
           <div class="stat-row"><div class="stat-big">${toGo}</div><div class="stat-label">still to order</div></div>
           <div class="stat-label" style="margin-top:4px">${toOrder.length} total · ${orderedN} already ordered</div>
-          <a href="shopping.html"><button class="mini" style="margin-top:12px">Open shopping list →</button></a>`;
+          <button class="mini" style="margin-top:12px" onclick="location.href='shopping.html'">Open shopping list →</button>`;
         return { title:"Shopping list", body };
       },
       predict: () => {
@@ -225,20 +258,46 @@
 
     // Which widgets each role sees by default
     const DEFAULT_LAYOUT = {
-      staff: ["my_progress","countdown","shift_progress","handoff","my_inventory"],
-      admin: ["team_completion","inventory_health","to_order","stock_value","predict","handoff"],
+      staff: ["special_tasks","my_progress","countdown","shift_progress","handoff","my_inventory"],
+      admin: ["special_tasks","team_completion","inventory_health","to_order","stock_value","predict","handoff"],
     };
     const ALL_FOR = {
-      staff: ["my_progress","countdown","shift_progress","handoff","my_inventory"],
-      admin: ["team_completion","inventory_health","to_order","stock_value","predict","handoff","shift_progress","countdown"],
+      staff: ["special_tasks","my_progress","countdown","shift_progress","handoff","my_inventory"],
+      admin: ["special_tasks","team_completion","inventory_health","to_order","stock_value","predict","handoff","shift_progress","countdown"],
     };
 
-    function layoutKey(){ return `dashLayout_${IS_ADMIN?'admin':'staff'}_${PROF.id}`; }
-    function getLayout(){
-      try { const s=localStorage.getItem(layoutKey()); if(s) return JSON.parse(s); } catch(e){}
-      return (IS_ADMIN?DEFAULT_LAYOUT.admin:DEFAULT_LAYOUT.staff).slice();
+    // Layout is an array of { w: widgetId, size: "1x1"|"2x1"|"1x2" }.
+    // Stored in the DB (user_prefs) so it syncs across devices; localStorage
+    // is a fallback cache for instant loads / offline.
+    let LAYOUT = null;   // loaded once, kept in memory
+
+    function localKey(){ return `dashLayout_${IS_ADMIN?'admin':'staff'}_${PROF.id}`; }
+    function defaultLayout(){
+      return (IS_ADMIN?DEFAULT_LAYOUT.admin:DEFAULT_LAYOUT.staff).map(w=>({w, size:"1x1"}));
     }
-    function saveLayout(arr){ try{ localStorage.setItem(layoutKey(), JSON.stringify(arr)); }catch(e){} }
+    // Normalize any older/simple format (array of ids) into {w,size} objects.
+    function normalizeLayout(arr){
+      if(!Array.isArray(arr)) return defaultLayout();
+      const out = arr.map(item => typeof item === "string" ? {w:item, size:"1x1"} : {w:item.w, size:item.size||"1x1"});
+      // ensure newly-added default widgets appear for existing users
+      if(!out.some(x=>x.w==="special_tasks")) out.unshift({w:"special_tasks", size:"1x1"});
+      return out.filter(x=>x.w);
+    }
+    async function loadLayout(){
+      // try DB first
+      try {
+        const { data } = await sb.from("user_prefs").select("layout").eq("user_id",PROF.id).maybeSingle();
+        if(data && data.layout){ LAYOUT = normalizeLayout(data.layout); localStorage.setItem(localKey(), JSON.stringify(LAYOUT)); return; }
+      } catch(e){ /* table may not exist yet, or offline */ }
+      // fall back to local cache
+      try { const s=localStorage.getItem(localKey()); if(s){ LAYOUT = normalizeLayout(JSON.parse(s)); return; } } catch(e){}
+      LAYOUT = defaultLayout();
+    }
+    async function saveLayout(){
+      try { localStorage.setItem(localKey(), JSON.stringify(LAYOUT)); } catch(e){}
+      try { await sb.from("user_prefs").upsert({ user_id:PROF.id, layout:LAYOUT, updated_at:new Date().toISOString() }, { onConflict:"user_id" }); } catch(e){}
+    }
+    function getLayout(){ return LAYOUT || defaultLayout(); }
 
     // ---------- render ----------
     function renderDash() {
@@ -259,14 +318,15 @@
 
       // toolbar
       html += `<div class="dash-toolbar">
-        <span class="stat-label">${IS_ADMIN?"Command center":"Today's focus"} · drag cards by the ⠿ handle to rearrange</span>
+        <span class="stat-label">${IS_ADMIN?"Command center":"Today's focus"} · drag by ⠿ · tap ⤢ to resize a card</span>
         <button class="tbtn" onclick="resetLayout()"><span class="dot">↺</span> Reset layout</button>
       </div>`;
 
       // tray of hidden widgets
       const layout=getLayout();
+      const shownIds=layout.map(x=>x.w);
       const all=(IS_ADMIN?ALL_FOR.admin:ALL_FOR.staff);
-      const hidden=all.filter(w=>!layout.includes(w));
+      const hidden=all.filter(w=>!shownIds.includes(w));
       if(hidden.length){
         html+=`<div class="tray"><span class="stat-label">Add a card:</span> `+
           hidden.map(w=>`<span class="tray-chip" onclick="addWidget('${w}')">+ ${WIDGETS[w]().title}</span>`).join("")+`</div>`;
@@ -274,12 +334,14 @@
 
       // grid
       html += `<div class="grid-dash" id="grid">`;
-      layout.forEach(w=>{
+      layout.forEach(item=>{
+        const w=item.w, size=item.size||"1x1";
         if(!WIDGETS[w]) return;
         const {title,body}=WIDGETS[w]();
-        html += `<div class="wcard" draggable="false" data-w="${w}">
+        html += `<div class="wcard size-${size}" draggable="false" data-w="${w}">
           <h3>${title}
             <span class="grip" title="Drag to move" onpointerdown="startDrag(event,'${w}')">⠿</span>
+            <button class="wsize" title="Resize card" onclick="cycleSize('${w}')">⤢</button>
             <button class="wremove" title="Remove card" onclick="removeWidget('${w}')"></button>
           </h3>
           <div class="wbody">${body}</div>
@@ -289,8 +351,8 @@
       app.innerHTML = html;
 
       // post-render: charts + async widgets
-      if(layout.includes("inventory_health")) drawHealthPie();
-      if(layout.includes("predict")) loadPredict();
+      if(shownIds.includes("inventory_health")) drawHealthPie();
+      if(shownIds.includes("predict")) loadPredict();
       // async: swap in the daily quote once it arrives
       dailyQuote().then(q => { const el=document.getElementById("quoteLine"); if(el&&q) el.textContent=q; });
     }
@@ -337,9 +399,24 @@
     }
 
     // ---------- widget management ----------
-    function addWidget(w){ const l=getLayout(); if(!l.includes(w)){ l.push(w); saveLayout(l); renderDash(); } }
-    function removeWidget(w){ const l=getLayout().filter(x=>x!==w); saveLayout(l); renderDash(); }
-    function resetLayout(){ localStorage.removeItem(layoutKey()); renderDash(); }
+    const SIZES=["1x1","2x1","1x2"];   // 1x1 = normal, 2x1 = wide, 1x2 = tall
+    function addWidget(w){
+      LAYOUT=getLayout();
+      if(!LAYOUT.some(x=>x.w===w)){ LAYOUT.push({w, size:"1x1"}); saveLayout(); renderDash(); }
+    }
+    function removeWidget(w){ LAYOUT=getLayout().filter(x=>x.w!==w); saveLayout(); renderDash(); }
+    function cycleSize(w){
+      LAYOUT=getLayout();
+      const item=LAYOUT.find(x=>x.w===w); if(!item) return;
+      const i=SIZES.indexOf(item.size||"1x1");
+      item.size=SIZES[(i+1)%SIZES.length];
+      saveLayout(); renderDash();
+    }
+    function resetLayout(){
+      LAYOUT=defaultLayout();
+      saveLayout();
+      renderDash();
+    }
 
     // ---------- drag & drop (pointer-based, works touch + mouse) ----------
     let dragW=null, dragEl=null;
@@ -367,10 +444,35 @@
       if(dragEl) dragEl.classList.remove("dragging");
       window.__dragging = false;
       document.querySelectorAll(".drag-over").forEach(c=>c.classList.remove("drag-over"));
-      // persist new order
-      const order=[...document.querySelectorAll("#grid .wcard")].map(c=>c.dataset.w);
-      saveLayout(order);
+      // persist new order, keeping each card's size
+      const cur=getLayout();
+      const sizeOf=w=>{ const it=cur.find(x=>x.w===w); return it?it.size:"1x1"; };
+      LAYOUT=[...document.querySelectorAll("#grid .wcard")].map(c=>({w:c.dataset.w, size:sizeOf(c.dataset.w)}));
+      saveLayout();
       dragW=null; dragEl=null;
+    }
+
+    // ---- Special tasks (Karlie's dashboard list) ----
+    async function addSpecial(){
+      const text=(document.getElementById("stText").value||"").trim();
+      const date=document.getElementById("stDate").value||null;
+      if(!text) return;
+      const { data:{user} } = await sb.auth.getUser();
+      const { error } = await sb.from("special_tasks").insert({ text, due_date:date, created_by:user.id });
+      if(error){ alert("Couldn't add: "+error.message); return; }
+      await loadData();
+      refreshWidget("special_tasks");
+    }
+    async function toggleSpecial(id, done){
+      const { data:{user} } = await sb.auth.getUser();
+      const st = (DATA.special||[]).find(s=>s.id===id); if(st){ st.done=done; }
+      refreshWidget("special_tasks");
+      await sb.from("special_tasks").update({ done, done_by:done?user.id:null, done_at:done?new Date().toISOString():null }).eq("id",id);
+    }
+    async function delSpecial(id){
+      DATA.special = (DATA.special||[]).filter(s=>s.id!==id);
+      refreshWidget("special_tasks");
+      await sb.from("special_tasks").delete().eq("id",id);
     }
 
     // ---------- fast order actions (update locally, no full reload) ----------

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Inventory</title>
-  <link rel="stylesheet" href="style.css?v=1784909995">
+  <link rel="stylesheet" href="style.css?v=1784931130">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,10 +12,10 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784909995"></script>
-  <script src="nav.js?v=1784909995"></script>
+  <script src="config.js?v=1784931130"></script>
+  <script src="nav.js?v=1784931130"></script>
   <script>
-    let ITEMS = [], FILTER = "all", IS_ADMIN = false, MY_ROLE = null, SCOPE = "mine";
+    let ITEMS = [], STATUSSET = new Set(), TYPESET = new Set(), SORTBY = "category", IS_ADMIN = false, MY_ROLE = null, SCOPE = "mine";
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -27,7 +27,7 @@
       // Deep-link from dashboard pie: ?filter=below / ?filter=extra
       const urlFilter = new URLSearchParams(location.search).get("filter");
       if (urlFilter === "below" || urlFilter === "extra") {
-        FILTER = urlFilter;
+        STATUSSET.add(urlFilter);
         SCOPE = "all";   // show across all items when arriving from a dashboard jump
       }
       await renderTopbar("Inventory", prof);
@@ -60,13 +60,28 @@ function canEditCount(it) {
         list = list.filter(i => i.owner === MY_ROLE);
       }
 
-      if (FILTER === "below") list = list.filter(isBelow);
-      else if (FILTER === "extra") list = list.filter(i => i.order_extra);
-      else if (FILTER === "tocount") list = list.filter(i => !i.counted_this_week);
-
+      // Counts for the dropdown labels (based on current scope, before status/type filters)
       const belowN = list.filter(isBelow).length;
       const extraN = list.filter(i => i.order_extra).length;
       const toCount = ITEMS.filter(i => !i.counted_this_week).length;
+
+      // Status filter (multi-select, OR within the group)
+      if (STATUSSET.size) {
+        list = list.filter(i =>
+          (STATUSSET.has("below") && isBelow(i)) ||
+          (STATUSSET.has("extra") && i.order_extra) ||
+          (STATUSSET.has("tocount") && !i.counted_this_week)
+        );
+      }
+      // Type filter (multi-select)
+      if (TYPESET.size) {
+        list = list.filter(i => TYPESET.has(i.category||"Other"));
+      }
+      // Sort
+      if (SORTBY === "name") list.sort((a,b)=>a.name.localeCompare(b.name));
+      else if (SORTBY === "category") list.sort((a,b)=>(a.category||"Other").localeCompare(b.category||"Other")||a.name.localeCompare(b.name));
+      else if (SORTBY === "count") list.sort((a,b)=>(a.current_on_hand??1e9)-(b.current_on_hand??1e9));
+      else if (SORTBY === "counthi") list.sort((a,b)=>(b.current_on_hand??-1)-(a.current_on_hand??-1));
 
       let html = "";
       // Scope tabs (only meaningful if the person has a role)
@@ -78,11 +93,35 @@ function canEditCount(it) {
         </div></div>`;
       }
 
-      html += `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${fb("all","All ("+list.length+")")}
-        ${fb("below","Below ("+belowN+")")}
-        ${fb("extra","Order Extra ("+extraN+")")}
-        ${fb("tocount","To Count ("+list.filter(i=>!i.counted_this_week).length+")")}
+      // Build the set of categories present (for the type filter)
+      const allCats = [...new Set(ITEMS.map(i=>i.category||"Other"))].sort();
+      const sortLabels={name:"Name A–Z",category:"Type",count:"Count low→high",counthi:"Count high→low"};
+      html += `<div class="card"><div class="fs-bar">
+        <div class="fs-drop">
+          <button class="fs-btn ${STATUSSET.size?"has-active":""}" onclick="fsToggle(this)">Status${STATUSSET.size?" ("+STATUSSET.size+")":""} <span class="chev">▼</span></button>
+          <div class="fs-menu">
+            <label class="fs-opt ${STATUSSET.has("below")?"selected":""}"><input type="checkbox" ${STATUSSET.has("below")?"checked":""} onchange="toggleStatus('below')"> Below (${belowN})</label>
+            <label class="fs-opt ${STATUSSET.has("extra")?"selected":""}"><input type="checkbox" ${STATUSSET.has("extra")?"checked":""} onchange="toggleStatus('extra')"> Order Extra (${extraN})</label>
+            <label class="fs-opt ${STATUSSET.has("tocount")?"selected":""}"><input type="checkbox" ${STATUSSET.has("tocount")?"checked":""} onchange="toggleStatus('tocount')"> To Count (${list.filter(i=>!i.counted_this_week).length})</label>
+            <div class="fs-actions"><button onclick="clearStatus()">Clear</button></div>
+          </div>
+        </div>
+        <div class="fs-drop">
+          <button class="fs-btn ${TYPESET.size?"has-active":""}" onclick="fsToggle(this)">Type${TYPESET.size?" ("+TYPESET.size+")":""} <span class="chev">▼</span></button>
+          <div class="fs-menu">
+            ${allCats.map(c=>`<label class="fs-opt ${TYPESET.has(c)?"selected":""}"><input type="checkbox" ${TYPESET.has(c)?"checked":""} onchange="toggleType('${c.replace(/'/g,"\\'")}')"> ${c} (${ITEMS.filter(i=>(i.category||"Other")===c).length})</label>`).join("")}
+            <div class="fs-actions"><button onclick="clearTypes()">Clear</button></div>
+          </div>
+        </div>
+        <div class="fs-drop">
+          <button class="fs-btn" onclick="fsToggle(this)">Sort: ${sortLabels[SORTBY]} <span class="chev">▼</span></button>
+          <div class="fs-menu">
+            <label class="fs-opt ${SORTBY==="name"?"selected":""}"><input type="radio" name="isort" ${SORTBY==="name"?"checked":""} onchange="setSort('name')"> Name A–Z</label>
+            <label class="fs-opt ${SORTBY==="category"?"selected":""}"><input type="radio" name="isort" ${SORTBY==="category"?"checked":""} onchange="setSort('category')"> Type</label>
+            <label class="fs-opt ${SORTBY==="count"?"selected":""}"><input type="radio" name="isort" ${SORTBY==="count"?"checked":""} onchange="setSort('count')"> Count low→high</label>
+            <label class="fs-opt ${SORTBY==="counthi"?"selected":""}"><input type="radio" name="isort" ${SORTBY==="counthi"?"checked":""} onchange="setSort('counthi')"> Count high→low</label>
+          </div>
+        </div>
       </div></div>`;
 
       if (IS_ADMIN) {
@@ -109,11 +148,15 @@ function canEditCount(it) {
         </div>`;
       }
 
-      // group by CATEGORY only (no owner name in the header)
+      // Group by category headers only when sorting by Type; otherwise flat list.
+      const grouped = (SORTBY === "category");
       let lastGroup = "", open = false;
+      if (!grouped) { html += `<div class="card">`; open = true; }
       list.forEach(it => {
-        const g = it.category || "Other";
-        if (g !== lastGroup) { if (open) html += `</div>`; html += `<h2 class="section">${g}</h2><div class="card">`; lastGroup=g; open=true; }
+        if (grouped) {
+          const g = it.category || "Other";
+          if (g !== lastGroup) { if (open) html += `</div>`; html += `<h2 class="section">${g}</h2><div class="card">`; lastGroup=g; open=true; }
+        }
         const below = isBelow(it);
         let fresh = "";
         if (IS_ADMIN && it.updated_at) {
@@ -163,7 +206,11 @@ function canEditCount(it) {
       if (!list.length) html += `<div class="empty">Nothing here.</div>`;
       app.innerHTML = html;
     }
-    function fb(id,label){ return `<button class="${FILTER===id?"":"secondary"}" onclick="FILTER='${id}';render()">${label}</button>`; }
+    function toggleStatus(s){ if(STATUSSET.has(s)) STATUSSET.delete(s); else STATUSSET.add(s); render(); }
+    function clearStatus(){ STATUSSET.clear(); render(); }
+    function toggleType(t){ if(TYPESET.has(t)) TYPESET.delete(t); else TYPESET.add(t); render(); }
+    function clearTypes(){ TYPESET.clear(); render(); }
+    function setSort(s){ SORTBY=s; render(); }
 
     async function setCount(id,val){
       const it=ITEMS.find(i=>i.id===id);

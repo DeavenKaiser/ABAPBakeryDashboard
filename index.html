@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ABAP Bakery — Sign In</title>
-  <link rel="stylesheet" href="style.css?v=1784909995">
+  <link rel="stylesheet" href="style.css?v=1784931130">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -22,12 +22,12 @@
         <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
       </div>
       <div class="error" id="err"></div>
-      <button id="loginBtn" style="width:100%">Sign In</button>
+      <button id="loginBtn" type="button" style="width:100%">Sign In</button>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784909995"></script>
+  <script src="config.js?v=1784931130"></script>
   <script>
     // If already signed in, skip straight to the app.
     (async () => {
@@ -41,22 +41,37 @@
       err.textContent = "You were signed out after 30 minutes of inactivity. Please sign in again.";
       err.style.color = "#6B4F3A";
     }
+    // Guard: if the Supabase library didn't load (flaky connection), say so
+    // instead of leaving a dead button.
+    if (typeof sb === "undefined") {
+      err.textContent = "Couldn't reach the server. Check your connection and reload.";
+      err.style.color = "var(--red)";
+    }
+
     document.getElementById("loginBtn").addEventListener("click", doLogin);
-    document.getElementById("password").addEventListener("keydown", e => {
-      if (e.key === "Enter") doLogin();
-    });
+    document.getElementById("email").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+    document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 
     async function doLogin() {
-      err.textContent = "";
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-      if (!email || !password) { err.textContent = "Enter your email and password."; return; }
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) { err.textContent = error.message; return; }
-      // Force password change if admin flagged it.
-      const prof = await getMyProfile();
-      if (prof && prof.must_change_password) { window.location.href = "change-password.html"; return; }
-      window.location.href = "dashboard.html";
+      try {
+        err.style.color = "var(--red)";
+        err.textContent = "";
+        if (typeof sb === "undefined") { err.textContent = "Couldn't reach the server. Reload and try again."; return; }
+        const email = document.getElementById("email").value.trim().toLowerCase();
+        const password = document.getElementById("password").value;
+        if (!email || !password) { err.textContent = "Enter your email and password."; return; }
+        const btn = document.getElementById("loginBtn");
+        btn.disabled = true; btn.textContent = "Signing in…";
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) { err.textContent = error.message; btn.disabled = false; btn.textContent = "Sign In"; return; }
+        const prof = await getMyProfile();
+        if (prof && prof.must_change_password) { window.location.href = "change-password.html"; return; }
+        window.location.href = "dashboard.html";
+      } catch (e) {
+        err.textContent = "Something went wrong signing in: " + (e.message || e);
+        const btn = document.getElementById("loginBtn");
+        if (btn) { btn.disabled = false; btn.textContent = "Sign In"; }
+      }
     }
   </script>
 </body>

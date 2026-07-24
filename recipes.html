@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipe Book</title>
-  <link rel="stylesheet" href="style.css?v=1784909995">
+  <link rel="stylesheet" href="style.css?v=1784931130">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,16 +12,19 @@
   <div class="wrap" id="app"><div class="empty">Loading recipes…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784909995"></script>
-  <script src="nav.js?v=1784909995"></script>
+  <script src="config.js?v=1784931130"></script>
+  <script src="nav.js?v=1784931130"></script>
   <script>
-    let IS_ADMIN=false, RECIPES=[], INGREDIENTS=[], INV={};
-    let CATFILTER="all", SORTBY="name", SEARCH="";
+    let IS_ADMIN=false, CAN_EDIT=false, SEE_MONEY=false, RECIPES=[], INGREDIENTS=[], INV={};
+    let CATSET=new Set(), SORTBY="name", SEARCH="";
 
     (async () => {
       if (!(await requireLogin())) return;
       const prof = await getMyProfile();
       IS_ADMIN = prof && prof.role==="admin";
+      const jobRole = profileJobRole(prof);
+      CAN_EDIT = IS_ADMIN || jobRole==="baker";   // baker can edit recipes too
+      SEE_MONEY = IS_ADMIN;                         // money stays admin-only
       await renderTopbar("Recipe Book", prof);
       renderNav("recipes", IS_ADMIN);
       await load();
@@ -65,43 +68,53 @@
 
       let html = `<div class="hero" style="padding:18px 22px">
         <div><h1 style="font-size:22px">Recipe Book</h1>
-        <div class="sub">${RECIPES.length} recipes${IS_ADMIN?" · you can see costs & edit":""}</div></div>
+        <div class="sub">${RECIPES.length} recipes${SEE_MONEY?" · you can see costs":""}${CAN_EDIT?" · you can edit":""}</div></div>
       </div>`;
 
       // Admin: add recipe button
-      if (IS_ADMIN) {
+      if (CAN_EDIT) {
         html += `<div style="margin-bottom:12px"><button class="mini" onclick="openEditor()">+ Add recipe</button></div>`;
       }
 
-      // Search
-      html += `<div class="card" style="margin-bottom:12px"><input type="text" id="search" placeholder="Search recipes…" value="${SEARCH}" oninput="SEARCH=this.value;renderList()"></div>`;
-
-      // Category filter row (inventory-style buttons)
+      // Search + filter + sort bar
       const cats=categories();
-      html += `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${catBtn("all","All ("+RECIPES.length+")")}
-        ${cats.map(c=>catBtn(c, c+" ("+RECIPES.filter(r=>(r.category||"Other")===c).length+")")).join("")}
-      </div></div>`;
-
-      // Sort row (inventory-style buttons)
-      html += `<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <span class="stat-label" style="margin-right:4px">Sort:</span>
-        ${sortBtn("name","Name A–Z")}
-        ${sortBtn("ingredients","# Ingredients")}
-        ${IS_ADMIN?sortBtn("cost","Cost"):""}
-      </div></div>`;
+      const sortLabels={name:"Name A–Z",ingredients:"# Ingredients",cost:"Cost"};
+      html += `<div class="card" style="margin-bottom:12px">
+        <input type="text" id="search" placeholder="Search recipes…" value="${SEARCH}" oninput="SEARCH=this.value;renderList()" style="margin-bottom:10px">
+        <div class="fs-bar">
+          <div class="fs-drop">
+            <button class="fs-btn ${CATSET.size?"has-active":""}" onclick="fsToggle(this)">
+              Filter${CATSET.size?" ("+CATSET.size+")":""} <span class="chev">▼</span></button>
+            <div class="fs-menu">
+              ${cats.map(c=>`<label class="fs-opt ${CATSET.has(c)?"selected":""}">
+                <input type="checkbox" ${CATSET.has(c)?"checked":""} onchange="toggleCat('${c.replace(/'/g,"\\'")}')">
+                ${c} (${RECIPES.filter(r=>(r.category||"Other")===c).length})</label>`).join("")}
+              <div class="fs-actions"><button onclick="clearCats()">Clear</button></div>
+            </div>
+          </div>
+          <div class="fs-drop">
+            <button class="fs-btn" onclick="fsToggle(this)">Sort: ${sortLabels[SORTBY]} <span class="chev">▼</span></button>
+            <div class="fs-menu">
+              <label class="fs-opt ${SORTBY==="name"?"selected":""}"><input type="radio" name="rsort" ${SORTBY==="name"?"checked":""} onchange="setSort('name')"> Name A–Z</label>
+              <label class="fs-opt ${SORTBY==="ingredients"?"selected":""}"><input type="radio" name="rsort" ${SORTBY==="ingredients"?"checked":""} onchange="setSort('ingredients')"> # Ingredients</label>
+              ${SEE_MONEY?`<label class="fs-opt ${SORTBY==="cost"?"selected":""}"><input type="radio" name="rsort" ${SORTBY==="cost"?"checked":""} onchange="setSort('cost')"> Cost</label>`:""}
+            </div>
+          </div>
+        </div>
+      </div>`;
 
       html += `<div id="recipeList"></div>`;
       app.innerHTML = html;
       renderList();
     }
+    function toggleCat(c){ if(CATSET.has(c)) CATSET.delete(c); else CATSET.add(c); render(); }
+    function clearCats(){ CATSET.clear(); render(); }
+    function setSort(s){ SORTBY=s; render(); }
 
-    function catBtn(id,label){ return `<button class="${CATFILTER===id?"":"secondary"}" onclick="CATFILTER='${id.replace(/'/g,"\\'")}';render()">${label}</button>`; }
-    function sortBtn(id,label){ return `<button class="${SORTBY===id?"":"secondary"}" onclick="SORTBY='${id}';renderList()">${label}</button>`; }
 
     function renderList(){
       let list = RECIPES.slice();
-      if (CATFILTER!=="all") list=list.filter(r=>(r.category||"Other")===CATFILTER);
+      if (CATSET.size) list=list.filter(r=>CATSET.has(r.category||"Other"));
       if (SEARCH.trim()){ const q=SEARCH.toLowerCase(); list=list.filter(r=>r.name.toLowerCase().includes(q)); }
       if (SORTBY==="name") list.sort((a,b)=>a.name.localeCompare(b.name));
       else if (SORTBY==="ingredients") list.sort((a,b)=>ingCount(b)-ingCount(a));
@@ -124,22 +137,24 @@
           <td><span class="dot-tag" style="background:${st.color};display:inline-block;margin-right:6px"></span>${ing.ingredient}</td>
           <td class="num">${need}</td>
           <td class="num" style="color:${st.color==='var(--berry)'?'var(--berry)':'inherit'}">${have}</td>
-          ${IS_ADMIN ? `<td class="num" style="color:var(--crust)">${ing.est_cost!=null?"$"+Number(ing.est_cost).toFixed(2):""}</td>`:""}
+          ${SEE_MONEY ? `<td class="num" style="color:var(--crust)">${ing.est_cost!=null?"$"+Number(ing.est_cost).toFixed(2):""}</td>`:""}
         </tr>`;
       }).join("");
       const ingTable = ings.length ? `<div style="overflow-x:auto"><table class="rpt">
-        <tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${IS_ADMIN?'<th class="num">Cost</th>':''}</tr>
+        <tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${SEE_MONEY?'<th class="num">Cost</th>':''}</tr>
         ${rows}</table></div>` : '<div class="empty">No ingredients listed.</div>';
 
       return `<div class="wcard recipe-card" style="margin-bottom:12px">
         <details>
           <summary style="cursor:pointer;font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso);display:flex;align-items:center;gap:8px">
-            <span style="flex:1">${r.name} <span class="stat-label" style="font-weight:400">· ${r.category||"Other"}</span>${IS_ADMIN && hasCost?` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}</span>
+            <span style="flex:1">${r.name} <span class="stat-label" style="font-weight:400">· ${r.category||"Other"}</span>${SEE_MONEY && hasCost?` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}</span>
           </summary>
           <div style="margin-top:10px">
             ${ingTable}
             <div class="stat-label" style="margin-top:8px">dot shows live inventory: <span style="color:var(--sage)">●</span> in stock · <span style="color:var(--berry)">●</span> low</div>
-            ${IS_ADMIN?`<div style="margin-top:10px;display:flex;gap:8px">
+            ${r.directions?`<div style="margin-top:12px"><div class="stat-label" style="font-weight:700;margin-bottom:4px">Directions</div>
+              <div style="font-size:14px;line-height:1.5;white-space:pre-wrap">${r.directions.replace(/</g,"&lt;")}</div></div>`:""}
+            ${CAN_EDIT?`<div style="margin-top:10px;display:flex;gap:8px">
               <button class="mini secondary" onclick="openEditor(${r.id})">Edit</button>
               <button class="mini" onclick="planRecipe(${r.id},'${(r.name||"").replace(/'/g,"")}')">Add to plan</button>
               <button class="mini" style="background:var(--berry)" onclick="deleteRecipe(${r.id},'${(r.name||"").replace(/'/g,"")}')">Delete</button>
@@ -168,6 +183,8 @@
         <label class="stat-label">Ingredients</label>
         <div id="ingRows"></div>
         <button class="mini secondary" style="margin-top:8px" onclick="addIngRow()">+ Add ingredient</button>
+        <div class="field" style="margin-top:12px"><label>Directions</label>
+          <textarea id="rDir" style="width:100%;min-height:100px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:inherit;font-size:15px" placeholder="Step-by-step directions…">${editing?(editing.directions||"").replace(/</g,"&lt;"):""}</textarea></div>
         <div class="error" id="rErr" style="min-height:auto;margin-top:10px"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
           <button class="mini secondary" onclick="this.closest('div[style*=fixed]').remove()">Cancel</button>
@@ -193,6 +210,7 @@
     async function saveRecipe(id){
       const name=document.getElementById("rName").value.trim();
       const category=document.getElementById("rCat").value;
+      const directions=document.getElementById("rDir").value.trim()||null;
       const err=document.getElementById("rErr");
       if(!name){ err.textContent="Name is required."; return; }
       const rows=[...document.querySelectorAll("#ingRows > div")].map((row,idx)=>({
@@ -203,10 +221,10 @@
       })).filter(r=>r.ingredient);
       let recipeId=id;
       if(id){
-        await sb.from("recipes").update({name,category}).eq("id",id);
+        await sb.from("recipes").update({name,category,directions}).eq("id",id);
         await sb.from("recipe_ingredients").delete().eq("recipe_id",id);
       } else {
-        const {data,error}=await sb.from("recipes").insert({name,category}).select().single();
+        const {data,error}=await sb.from("recipes").insert({name,category,directions}).select().single();
         if(error){ err.textContent=error.message; return; }
         recipeId=data.id;
       }
