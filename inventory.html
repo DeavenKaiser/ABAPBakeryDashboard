@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Inventory</title>
-  <link rel="stylesheet" href="style.css?v=1784838562">
+  <link rel="stylesheet" href="style.css?v=1784861599">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784838562"></script>
-  <script src="nav.js?v=1784838562"></script>
+  <script src="config.js?v=1784861599"></script>
+  <script src="nav.js?v=1784861599"></script>
   <script>
     let ITEMS = [], FILTER = "all", IS_ADMIN = false, MY_ROLE = null, SCOPE = "mine";
 
@@ -121,12 +121,23 @@ function canEditCount(it) {
           const when = new Date(it.updated_at).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
           fresh = `<div class="freshness">Last counted ${who} · ${when}</div>`;
         }
+        const editing = IS_ADMIN && editMode();
         html += `<div class="row ${below?"below-row":""}">
           <div class="txt">
-            <div style="font-size:15px">${it.name}
-              ${below?'<span class="pill below">BELOW</span>':''}
-              ${it.order_extra?'<span class="pill extra">EXTRA</span>':''}</div>
-            <div class="sub">min ${it.min_on_hand??"—"} · threshold ${it.threshold??"—"}${it.unit?" · "+it.unit:""}${IS_ADMIN&&it.unit_cost!=null?` · $${it.unit_cost}/unit`:""}</div>
+            ${editing
+              ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                   <input type="text" value="${(it.name||"").replace(/"/g,"&quot;")}" onchange="setField(${it.id},'name',this.value)"
+                     style="font-size:15px;font-weight:600;border:1px solid var(--line);border-radius:6px;padding:4px 8px;min-width:140px;flex:1">
+                 </div>
+                 <div class="sub" style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+                   <label>threshold <input type="number" step="any" value="${it.threshold??""}" onchange="setField(${it.id},'threshold',this.value)" style="width:64px"></label>
+                   <label>unit <input type="text" value="${(it.unit||"").replace(/"/g,"&quot;")}" onchange="setField(${it.id},'unit',this.value)" style="width:64px"></label>
+                   <label>min <input type="text" value="${(it.min_on_hand||"").toString().replace(/"/g,"&quot;")}" onchange="setField(${it.id},'min_on_hand',this.value)" style="width:64px"></label>
+                 </div>`
+              : `<div style="font-size:15px">${it.name}
+                   ${below?'<span class="pill below">BELOW</span>':''}
+                   ${it.order_extra?'<span class="pill extra">EXTRA</span>':''}</div>
+                 <div class="sub">min ${it.min_on_hand??"—"} · threshold ${it.threshold??"—"}${it.unit?" · "+it.unit:""}${IS_ADMIN&&it.unit_cost!=null?` · $${it.unit_cost}/unit`:""}</div>`}
             <div style="margin-top:4px">
               <button class="tbtn extra ${it.order_extra?"on":""}" onclick="setExtra(${it.id}, ${!it.order_extra})">
                 <span class="dot">${it.order_extra?"●":"○"}</span> Order extra</button>
@@ -135,7 +146,7 @@ function canEditCount(it) {
                      <span class="dot">${it.counted_this_week?"✓":"○"}</span> Counted</button>`
                 : `<span class="tbtn ${it.counted_this_week?"on counted":""}" style="opacity:.6;cursor:not-allowed">
                      <span class="dot">${it.counted_this_week?"✓":"○"}</span> Counted</span>`}
-              ${(IS_ADMIN && editMode())?`<span class="tbtn" style="cursor:default;background:#f2ede4">$ <input type="number" step="0.01" value="${it.unit_cost??""}" placeholder="cost"
+              ${editing?`<span class="tbtn" style="cursor:default;background:#f2ede4">$ <input type="number" step="0.01" value="${it.unit_cost??""}" placeholder="cost"
                   style="width:64px;border:none;background:transparent;font-size:13px;font-weight:700;padding:0 2px" onchange="setCost(${it.id},this.value)"></span>`:""}
             </div>
             ${fresh}
@@ -144,7 +155,7 @@ function canEditCount(it) {
             ${canEditCount(it)
               ? `<input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">`
               : `<div class="count-num" style="text-align:center;color:#a99;border:1px solid var(--line);border-radius:8px;padding:8px 0" title="Only ${roleLabel(it.owner)} can update this count">${it.current_on_hand??"—"}</div>`}
-            ${(IS_ADMIN && editMode())?`<button class="mini" style="background:var(--red);padding:4px 9px;font-size:12px" onclick="delItem(${it.id})">✕ remove</button>`:""}
+            ${editing?`<button class="mini" style="background:var(--red);padding:4px 9px;font-size:12px" onclick="delItem(${it.id})">✕ remove</button>`:""}
           </div>
         </div>`;
       });
@@ -166,6 +177,16 @@ function canEditCount(it) {
     async function setExtra(id,on){ const it=ITEMS.find(i=>i.id===id); it.order_extra=on; await sb.from("inventory_items").update({order_extra:on}).eq("id",id); render(); }
     async function setCounted(id,on){ const it=ITEMS.find(i=>i.id===id); if(!canEditCount(it)) return; it.counted_this_week=on; await sb.from("inventory_items").update({counted_this_week:on}).eq("id",id); render(); }
     async function setCost(id,val){ const n=val===""?null:Number(val); ITEMS.find(i=>i.id===id).unit_cost=n; await sb.from("inventory_items").update({unit_cost:n}).eq("id",id); }
+    async function setField(id, field, val){
+      let v = val;
+      if (field==="threshold") v = (val===""?null:Number(val));
+      if (field==="name" && !val.trim()) { alert("Name can't be empty."); render(); return; }
+      const item = ITEMS.find(i=>i.id===id);
+      item[field] = v;
+      const { error } = await sb.from("inventory_items").update({ [field]: v, updated_at:new Date().toISOString() }).eq("id",id);
+      if (error) { alert("Couldn't save: "+error.message); return; }
+      render();
+    }
 
     async function addItem(){
       const err=document.getElementById("niErr"); err.textContent="";

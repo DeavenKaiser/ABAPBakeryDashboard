@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Tasks</title>
-  <link rel="stylesheet" href="style.css?v=1784838562">
+  <link rel="stylesheet" href="style.css?v=1784861599">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,10 +12,10 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784838562"></script>
-  <script src="nav.js?v=1784838562"></script>
+  <script src="config.js?v=1784861599"></script>
+  <script src="nav.js?v=1784861599"></script>
   <script>
-    let PROF=null, IS_ADMIN=false, MY_ROLE=null, TASKS=[], DONE={}, VIEW_ROLE=null, STATS={};
+    let PROF=null, IS_ADMIN=false, MY_ROLE=null, TASKS=[], DONE={}, VIEW_ROLE=null, STATS={}, INV_PROGRESS=null;
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -64,6 +64,17 @@
       (stats||[]).forEach(s => {
         STATS[s.task_id] = s.expected_60d > 0 ? (s.completions_60d / s.expected_60d) : 1;
       });
+
+      // Inventory-counting progress for this role (feeds the smart "count" card)
+      INV_PROGRESS = null;
+      if (VIEW_ROLE && VIEW_ROLE !== "shared") {
+        const { data: invItems } = await sb.from("inventory_items")
+          .select("counted_this_week").eq("owner", VIEW_ROLE);
+        if (invItems && invItems.length) {
+          const counted = invItems.filter(i=>i.counted_this_week).length;
+          INV_PROGRESS = { counted, total: invItems.length };
+        }
+      }
 
       render();
       loadNote();
@@ -141,6 +152,27 @@
             <button class="mini" onclick="addTask()">Add task</button>
           </div>
           <div class="error" id="addTaskErr" style="min-height:auto"></div>
+        </div>`;
+      }
+
+      // Smart inventory-count progress: shows how far along counting is for this
+      // role, and marks it done automatically when every item is counted.
+      if (INV_PROGRESS) {
+        const { counted, total } = INV_PROGRESS;
+        const pct = Math.round(counted/total*100);
+        const allDone = counted >= total;
+        html += `<div class="card" style="border-left:4px solid ${allDone?'var(--sage)':'var(--honey)'}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">${allDone?"✓":"◷"}</span>
+            <div style="flex:1">
+              <div style="font-weight:700">${allDone?"Inventory count complete":"Inventory counting"}</div>
+              <div class="stat-label">${counted} of ${total} ${roleLabel(VIEW_ROLE)} items counted this week</div>
+              <div class="progress-wrap" style="margin-top:6px"><div class="progress-bar" style="width:${pct}%;background:${allDone?'var(--sage)':'var(--honey)'}"></div></div>
+            </div>
+          </div>
+          ${allDone
+            ? `<div class="stat-label" style="margin-top:8px;color:var(--sage)">Nice — everything's counted. This checks off automatically.</div>`
+            : `<a href="inventory.html"><button class="mini" style="margin-top:10px">Go count items →</button></a>`}
         </div>`;
       }
 

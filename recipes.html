@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipe Book</title>
-  <link rel="stylesheet" href="style.css?v=1784838562">
+  <link rel="stylesheet" href="style.css?v=1784861599">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading recipes…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784838562"></script>
-  <script src="nav.js?v=1784838562"></script>
+  <script src="config.js?v=1784861599"></script>
+  <script src="nav.js?v=1784861599"></script>
   <script>
     let IS_ADMIN=false, RECIPES=[], INGREDIENTS=[], INV={};
     let CATFILTER="all", SORTBY="name", SEARCH="";
@@ -43,11 +43,13 @@
       const key=(ingName||"").toLowerCase().trim();
       let it = INV[key];
       if (!it) { const f=Object.keys(INV).find(k=>k.includes(key)||key.includes(k)); if(f) it=INV[f]; }
-      if (!it) return { label:"not tracked", color:"#b0a48f" };
+      if (!it) return { label:"not tracked", color:"#b0a48f", have:null, unit:null };
+      const have = it.current_on_hand;
+      const unit = it.unit||"";
       const below = it.current_on_hand!=null && it.threshold!=null && Number(it.current_on_hand)<Number(it.threshold);
-      if (it.current_on_hand==null) return { label:"in inventory", color:"var(--sage)" };
-      if (below) return { label:"low", color:"var(--berry)" };
-      return { label:"in stock", color:"var(--sage)" };
+      if (it.current_on_hand==null) return { label:"in inventory", color:"var(--sage)", have:null, unit };
+      if (below) return { label:"low", color:"var(--berry)", have, unit };
+      return { label:"in stock", color:"var(--sage)", have, unit };
     }
 
     function categories(){
@@ -116,14 +118,18 @@
       const rows = ings.map(ing => {
         const st = stockStatus(ing.ingredient);
         if (ing.est_cost!=null){ total+=Number(ing.est_cost); hasCost=true; }
-        const amt = ing.amount!=null ? `${ing.amount} ${ing.unit||""}` : (ing.unit||"");
-        return `<div class="mini-item">
-          <span class="dot-tag" style="background:${st.color}"></span>
-          <span style="flex:1">${ing.ingredient}</span>
-          <span class="stat-label" style="min-width:80px;text-align:right">${amt}</span>
-          ${IS_ADMIN && ing.est_cost!=null ? `<span class="stat-label" style="min-width:54px;text-align:right;color:var(--crust)">$${Number(ing.est_cost).toFixed(2)}</span>`:""}
-        </div>`;
+        const need = ing.amount!=null ? `${ing.amount} ${ing.unit||""}` : (ing.unit||"—");
+        const have = st.have!=null ? `${st.have} ${st.unit||""}` : (st.label==="not tracked" ? "—" : "—");
+        return `<tr>
+          <td><span class="dot-tag" style="background:${st.color};display:inline-block;margin-right:6px"></span>${ing.ingredient}</td>
+          <td class="num">${need}</td>
+          <td class="num" style="color:${st.color==='var(--berry)'?'var(--berry)':'inherit'}">${have}</td>
+          ${IS_ADMIN ? `<td class="num" style="color:var(--crust)">${ing.est_cost!=null?"$"+Number(ing.est_cost).toFixed(2):""}</td>`:""}
+        </tr>`;
       }).join("");
+      const ingTable = ings.length ? `<div style="overflow-x:auto"><table class="rpt">
+        <tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${IS_ADMIN?'<th class="num">Cost</th>':''}</tr>
+        ${rows}</table></div>` : '<div class="empty">No ingredients listed.</div>';
 
       return `<div class="wcard recipe-card" style="margin-bottom:12px">
         <details>
@@ -131,7 +137,7 @@
             <span style="flex:1">${r.name} <span class="stat-label" style="font-weight:400">· ${r.category||"Other"}</span>${IS_ADMIN && hasCost?` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}</span>
           </summary>
           <div style="margin-top:10px">
-            ${rows||'<div class="empty">No ingredients listed.</div>'}
+            ${ingTable}
             <div class="stat-label" style="margin-top:8px">dot shows live inventory: <span style="color:var(--sage)">●</span> in stock · <span style="color:var(--berry)">●</span> low</div>
             ${IS_ADMIN?`<div style="margin-top:10px;display:flex;gap:8px">
               <button class="mini secondary" onclick="openEditor(${r.id})">Edit</button>

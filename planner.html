@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Prep Planner</title>
-  <link rel="stylesheet" href="style.css?v=1784838562">
+  <link rel="stylesheet" href="style.css?v=1784861599">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading Prep Planner…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784838562"></script>
-  <script src="nav.js?v=1784838562"></script>
+  <script src="config.js?v=1784861599"></script>
+  <script src="nav.js?v=1784861599"></script>
   <script>
     let IS_ADMIN=false, TAB="calendar", PRICING=[], SETTINGS=[];
     let PLAN=[], RECIPES=[], CAL_MONTH=null, PROJECTION=null;
@@ -160,8 +160,15 @@
       const byDate={};
       upcoming.forEach(p=>{ (byDate[p.plan_date]||=[]).push(p); });
       const dates=Object.keys(byDate).sort();
-      if(!dates.length) return `<div class="card"><div class="empty">Nothing planned yet.<br>Switch to Calendar and tap a day to start.</div></div>`;
-      let html="";
+      // top control: pick any day to add to (works even with nothing planned yet)
+      let html=`<div class="card" style="margin-bottom:12px">
+        <label class="stat-label">Add to a day</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <input type="date" id="listAddDate" value="${todayStr}" style="flex:1">
+          <button class="mini" onclick="openDayFromList()">Open day</button>
+        </div>
+      </div>`;
+      if(!dates.length){ html+=`<div class="card"><div class="empty">Nothing planned yet.<br>Pick a day above, or tap a day on the Calendar.</div></div>`; return html; }
       dates.forEach(d=>{
         const dObj=new Date(d+"T00:00:00");
         const label=dObj.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
@@ -175,6 +182,10 @@
         html+=`<button class="mini" style="margin-top:8px" onclick="openDay('${d}')">+ Add to this day</button></div>`;
       });
       return html;
+    }
+    function openDayFromList(){
+      const d=document.getElementById("listAddDate").value;
+      if(d) openDay(d);
     }
 
     // ---------- Projection view ----------

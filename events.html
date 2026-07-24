@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Events</title>
-  <link rel="stylesheet" href="style.css?v=1784838562">
+  <link rel="stylesheet" href="style.css?v=1784861599">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,10 +12,10 @@
   <div class="wrap" id="app"><div class="empty">Loading events…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784838562"></script>
-  <script src="nav.js?v=1784838562"></script>
+  <script src="config.js?v=1784861599"></script>
+  <script src="nav.js?v=1784861599"></script>
   <script>
-    let IS_ADMIN=false, EVENTS=[], EITEMS=[], ME=null;
+    let IS_ADMIN=false, EVENTS=[], EITEMS=[], ME=null, SETUP_OK=true, LOAD_ERR="";
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -23,17 +23,24 @@
       ME = prof; IS_ADMIN = prof && prof.role==="admin";
       await renderTopbar("Events", prof);
       renderNav("events", IS_ADMIN);
-      // opportunistic auto-archive of past events
-      try { await sb.rpc("archive_past_events"); } catch(e){}
+      try { await sb.rpc("archive_past_events"); } catch(e){ /* function may not exist yet */ }
       await load();
     })();
 
     async function load(){
-      const [{data:evs},{data:items}] = await Promise.all([
-        sb.from("events").select("*").neq("status","archived").order("event_date"),
-        sb.from("event_items").select("*"),
-      ]);
-      EVENTS = evs||[]; EITEMS = items||[];
+      try {
+        const [ev, it] = await Promise.all([
+          sb.from("events").select("*").neq("status","archived").order("event_date"),
+          sb.from("event_items").select("*"),
+        ]);
+        if (ev.error) throw ev.error;
+        EVENTS = ev.data||[]; EITEMS = (it&&it.data)||[];
+        SETUP_OK = true;
+      } catch(e){
+        console.error("events load error:", e);
+        EVENTS = []; EITEMS = []; SETUP_OK = false;
+        LOAD_ERR = e.message || String(e);
+      }
       render();
     }
 
@@ -44,6 +51,15 @@
         <div class="sub">Cake deliveries, classes, fairs & parties</div></div>
         <button class="mini" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4)" onclick="openForm()">+ Add event</button>
       </div>`;
+
+      if (!SETUP_OK) {
+        html += `<div class="card"><div class="error" style="min-height:auto">
+          The Events feature isn't set up in the database yet.</div>
+          <p class="muted">Run <strong>Phase14_Events.sql</strong> in Supabase (after Phase 13), then reload this page.</p>
+          <p class="stat-label">Details: ${LOAD_ERR.replace(/</g,"&lt;")}</p></div>`;
+        app.innerHTML = html;
+        return;
+      }
 
       const approved=EVENTS.filter(e=>e.status==="approved");
       const pending=EVENTS.filter(e=>e.status==="pending");
