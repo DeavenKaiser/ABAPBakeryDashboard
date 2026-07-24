@@ -237,3 +237,36 @@ function isBelow(it){
   return it && it.current_on_hand != null && it.threshold != null
     && Number(it.current_on_hand) < Number(it.threshold);
 }
+
+// ---- Real-time: re-run a loader when a table changes on any device ----
+// Debounced so a burst of changes causes one refresh. Safe if realtime is
+// unavailable (it just no-ops). Pull-to-refresh remains as a fallback.
+// By default it SKIPS the refresh while the user is typing in a field, so a
+// live update can't wipe an in-progress edit.
+function subscribeToChanges(tables, onChange, opts) {
+  opts = opts || {};
+  const debounceMs = opts.debounceMs ?? 400;
+  const guardTyping = opts.guardTyping !== false;
+  let timer = null;
+  const trigger = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (guardTyping) {
+        const el = document.activeElement;
+        if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT")) return;
+      }
+      try { onChange(); } catch (e) { console.error(e); }
+    }, debounceMs);
+  };
+  try {
+    const chan = sb.channel("rt_" + Math.random().toString(36).slice(2));
+    (Array.isArray(tables) ? tables : [tables]).forEach(t => {
+      chan.on("postgres_changes", { event: "*", schema: "public", table: t }, trigger);
+    });
+    chan.subscribe();
+    return chan;
+  } catch (e) {
+    console.warn("realtime unavailable:", e && e.message);
+    return null;
+  }
+}

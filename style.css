@@ -220,35 +220,46 @@ nav.tabs a { position: relative; }
 .hero .sub { font-size: 14px; opacity: .85; }
 .hero-ring { flex-shrink: 0; }
 
-/* Metric cards — CSS grid supporting resizable cards (span columns/rows).
-   align-items:start keeps cards from stretching to match a tall neighbor. */
+/* Metric cards — JavaScript masonry: each card tucks up under the card above
+   it (no gaps from a tall neighbor). JS positions cards absolutely and sets
+   the container height. Cards can span multiple columns (width) and rows (height). */
 .grid-dash {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: 1fr;
-  grid-auto-rows: min-content;
-  align-items: start;
+  position: relative;
+  width: 100%;
 }
-@media (min-width: 620px)  { .grid-dash { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 1000px) { .grid-dash { grid-template-columns: repeat(3, 1fr); } }
-@media (min-width: 1500px) { .grid-dash { grid-template-columns: repeat(4, 1fr); } }
-
-.grid-dash > .wcard { width: auto; margin: 0; }
-
-/* Card sizes. On a single-column (phone) layout, spans collapse to 1 so
-   nothing overflows. Wider screens honor the spans. */
-.wcard.size-2x1 { grid-column: span 1; }
-.wcard.size-1x2 { grid-row: span 1; }
-@media (min-width: 620px) {
-  .wcard.size-2x1 { grid-column: span 2; }
-  .wcard.size-1x2 { grid-row: span 2; }
+.grid-dash > .wcard {
+  position: absolute;
+  margin: 0;
+  box-sizing: border-box;
+  transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease;
 }
-/* the resize button */
+.grid-dash > .wcard.dragging { transition: none; z-index: 20; opacity: .6; }
+
+/* resize + size controls in the card header */
 .wsize {
   background: none; border: none; cursor: pointer; font-size: 15px;
   color: #b8a894; padding: 0 4px; line-height: 1;
 }
 .wsize:hover { color: var(--crust); }
+
+/* size grid picker popup */
+.size-picker {
+  position: absolute; z-index: 80; background: #fff; border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 8px 30px rgba(61,46,35,.2); padding: 12px;
+}
+.size-picker .sp-title { font-size: 12px; color: #8a7d6d; font-weight: 700; margin-bottom: 8px; text-align: center; }
+.size-grid { display: grid; gap: 5px; }
+.size-cell {
+  width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 6px;
+  cursor: pointer; background: var(--cream);
+}
+.size-cell:hover, .size-cell.hot { background: var(--butter); border-color: var(--crust); }
+.size-cell.current { background: var(--crust); border-color: var(--crust); }
+
+/* desktop-only column control */
+.col-control { display: none; align-items: center; gap: 6px; }
+@media (min-width: 700px) { .col-control { display: inline-flex; } }
+.col-control select { font-size: 13px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); }
 
 .wcard {
   background: #fff; border: 1px solid #EADFCB; border-radius: 18px; padding: 18px;

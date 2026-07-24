@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=1784931130">
+  <link rel="stylesheet" href="style.css?v=1784932750">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading your day…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784931130"></script>
-  <script src="nav.js?v=1784931130"></script>
+  <script src="config.js?v=1784932750"></script>
+  <script src="nav.js?v=1784932750"></script>
   <script>
     // ---------- state ----------
     let PROF=null, IS_ADMIN=false, MY_ROLE=null, DATA={};
@@ -28,6 +28,12 @@
       await loadData();
       await loadLayout();
       renderDash();
+      // Live updates from any device. Skip while dragging a card (the built-in
+      // typing guard also protects the special-tasks input).
+      subscribeToChanges(
+        ["task_completions","inventory_items","order_log","special_tasks","shift_note","tasks"],
+        async () => { if (window.__dragging) return; await loadData(); renderDash(); }
+      );
     })();
 // ---------- one-time data load ----------
     async function loadData() {
@@ -266,21 +272,30 @@
       admin: ["special_tasks","team_completion","inventory_health","to_order","stock_value","predict","handoff","shift_progress","countdown"],
     };
 
-    // Layout is an array of { w: widgetId, size: "1x1"|"2x1"|"1x2" }.
+    // Layout is an array of { w: widgetId, cols: 1-4, rows: 1-3 }.
     // Stored in the DB (user_prefs) so it syncs across devices; localStorage
     // is a fallback cache for instant loads / offline.
     let LAYOUT = null;   // loaded once, kept in memory
 
     function localKey(){ return `dashLayout_${IS_ADMIN?'admin':'staff'}_${PROF.id}`; }
     function defaultLayout(){
-      return (IS_ADMIN?DEFAULT_LAYOUT.admin:DEFAULT_LAYOUT.staff).map(w=>({w, size:"1x1"}));
+      return (IS_ADMIN?DEFAULT_LAYOUT.admin:DEFAULT_LAYOUT.staff).map(w=>({w, cols:1, rows:1}));
     }
-    // Normalize any older/simple format (array of ids) into {w,size} objects.
+    // Convert an old size string ("2x1") to {cols,rows}.
+    function sizeToDims(size){
+      if(size==="2x1") return {cols:2, rows:1};
+      if(size==="1x2") return {cols:1, rows:2};
+      return {cols:1, rows:1};
+    }
+    // Normalize any older format (array of ids, or {w,size}) into {w,cols,rows}.
     function normalizeLayout(arr){
       if(!Array.isArray(arr)) return defaultLayout();
-      const out = arr.map(item => typeof item === "string" ? {w:item, size:"1x1"} : {w:item.w, size:item.size||"1x1"});
-      // ensure newly-added default widgets appear for existing users
-      if(!out.some(x=>x.w==="special_tasks")) out.unshift({w:"special_tasks", size:"1x1"});
+      const out = arr.map(item => {
+        if(typeof item === "string") return {w:item, cols:1, rows:1};
+        if(item.size && !item.cols){ const d=sizeToDims(item.size); return {w:item.w, cols:d.cols, rows:d.rows}; }
+        return {w:item.w, cols:Math.min(4,Math.max(1,item.cols||1)), rows:Math.min(3,Math.max(1,item.rows||1))};
+      });
+      if(!out.some(x=>x.w==="special_tasks")) out.unshift({w:"special_tasks", cols:1, rows:1});
       return out.filter(x=>x.w);
     }
     async function loadLayout(){
@@ -316,10 +331,20 @@
         ${ring(focusPct)}
       </div>`;
 
-      // toolbar
+      // toolbar (with desktop-only column control)
+      const colPref = getColPref();
       html += `<div class="dash-toolbar">
-        <span class="stat-label">${IS_ADMIN?"Command center":"Today's focus"} · drag by ⠿ · tap ⤢ to resize a card</span>
-        <button class="tbtn" onclick="resetLayout()"><span class="dot">↺</span> Reset layout</button>
+        <span class="stat-label">${IS_ADMIN?"Command center":"Today's focus"} · drag by ⠿ · tap ⤢ to resize</span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <span class="col-control"><span class="stat-label">Columns</span>
+            <select onchange="setColPref(this.value)">
+              <option value="auto" ${colPref==="auto"?"selected":""}>Auto</option>
+              <option value="2" ${colPref==="2"?"selected":""}>2</option>
+              <option value="3" ${colPref==="3"?"selected":""}>3</option>
+              <option value="4" ${colPref==="4"?"selected":""}>4</option>
+            </select></span>
+          <button class="tbtn" onclick="resetLayout()"><span class="dot">↺</span> Reset</button>
+        </span>
       </div>`;
 
       // tray of hidden widgets
@@ -332,16 +357,16 @@
           hidden.map(w=>`<span class="tray-chip" onclick="addWidget('${w}')">+ ${WIDGETS[w]().title}</span>`).join("")+`</div>`;
       }
 
-      // grid
+      // grid (masonry positioned by JS after render)
       html += `<div class="grid-dash" id="grid">`;
       layout.forEach(item=>{
-        const w=item.w, size=item.size||"1x1";
+        const w=item.w;
         if(!WIDGETS[w]) return;
         const {title,body}=WIDGETS[w]();
-        html += `<div class="wcard size-${size}" draggable="false" data-w="${w}">
+        html += `<div class="wcard" draggable="false" data-w="${w}">
           <h3>${title}
             <span class="grip" title="Drag to move" onpointerdown="startDrag(event,'${w}')">⠿</span>
-            <button class="wsize" title="Resize card" onclick="cycleSize('${w}')">⤢</button>
+            <button class="wsize" title="Resize card" onclick="openSizePicker(event,'${w}')">⤢</button>
             <button class="wremove" title="Remove card" onclick="removeWidget('${w}')"></button>
           </h3>
           <div class="wbody">${body}</div>
@@ -353,8 +378,10 @@
       // post-render: charts + async widgets
       if(shownIds.includes("inventory_health")) drawHealthPie();
       if(shownIds.includes("predict")) loadPredict();
-      // async: swap in the daily quote once it arrives
       dailyQuote().then(q => { const el=document.getElementById("quoteLine"); if(el&&q) el.textContent=q; });
+
+      // lay out masonry now and on resize
+      layoutMasonry();
     }
 
     // ---------- charts ----------
@@ -399,23 +426,113 @@
     }
 
     // ---------- widget management ----------
-    const SIZES=["1x1","2x1","1x2"];   // 1x1 = normal, 2x1 = wide, 1x2 = tall
     function addWidget(w){
       LAYOUT=getLayout();
-      if(!LAYOUT.some(x=>x.w===w)){ LAYOUT.push({w, size:"1x1"}); saveLayout(); renderDash(); }
+      if(!LAYOUT.some(x=>x.w===w)){ LAYOUT.push({w, cols:1, rows:1}); saveLayout(); renderDash(); }
     }
     function removeWidget(w){ LAYOUT=getLayout().filter(x=>x.w!==w); saveLayout(); renderDash(); }
-    function cycleSize(w){
+    function resetLayout(){ LAYOUT=defaultLayout(); saveLayout(); renderDash(); }
+
+    // ---------- column preference (desktop only) ----------
+    function getColPref(){ try { return localStorage.getItem("dashCols_"+PROF.id) || "auto"; } catch(e){ return "auto"; } }
+    function setColPref(v){ try { localStorage.setItem("dashCols_"+PROF.id, v); } catch(e){} renderDash(); }
+    function effectiveColumns(){
+      const width = document.getElementById("grid")?.clientWidth || window.innerWidth;
+      // phones always single column regardless of preference
+      if (width < 620) return 1;
+      const pref = getColPref();
+      if (pref !== "auto") return Math.min(4, Math.max(1, parseInt(pref)));
+      // auto: pick by width
+      if (width >= 1500) return 4;
+      if (width >= 1000) return 3;
+      return 2;
+    }
+
+    // ---------- masonry layout ----------
+    // Places each card into the shortest-fitting column run, so cards tuck up
+    // under the card above them (no gaps). Wide cards span multiple columns.
+    function layoutMasonry(){
+      const grid=document.getElementById("grid"); if(!grid) return;
+      const cards=[...grid.querySelectorAll(".wcard")];
+      if(!cards.length){ grid.style.height="0px"; return; }
+      const cols=effectiveColumns();
+      const gap=14;
+      const gw=grid.clientWidth;
+      const colW=(gw-gap*(cols-1))/cols;
+      const colH=new Array(cols).fill(0);   // running height of each column
+
+      const layout=getLayout();
+      const dimsOf=w=>{ const it=layout.find(x=>x.w===w)||{}; return {cols:Math.min(cols,it.cols||1), rows:it.rows||1}; };
+
+      cards.forEach(card=>{
+        const w=card.dataset.w;
+        const d=dimsOf(w);
+        const span=Math.min(cols, d.cols);
+        // set width first so the card's natural height reflects its real width
+        card.style.width=(colW*span+gap*(span-1))+"px";
+        // rows>1 reserves extra height (a "taller" card). Base row unit ~ 150px.
+        card.style.minHeight = d.rows>1 ? (d.rows*150)+"px" : "";
+        // find the leftmost column start where `span` columns are all at the min height
+        let bestCol=0, bestTop=Infinity;
+        for(let c=0;c<=cols-span;c++){
+          let top=0; for(let k=0;k<span;k++) top=Math.max(top,colH[c+k]);
+          if(top<bestTop){ bestTop=top; bestCol=c; }
+        }
+        card.style.left=(bestCol*(colW+gap))+"px";
+        card.style.top=bestTop+"px";
+        // measure the card's rendered height (its content); rows multiplier lets a
+        // "tall" card reserve extra space if the user wants it bigger than content.
+        const natural=card.offsetHeight;
+        const used=bestTop+natural+gap;
+        for(let k=0;k<span;k++) colH[bestCol+k]=used;
+      });
+      grid.style.height=Math.max(...colH)+"px";
+    }
+    // Re-flow on window resize (debounced).
+    let _mtimer=null;
+    window.addEventListener("resize", ()=>{ clearTimeout(_mtimer); _mtimer=setTimeout(layoutMasonry,120); });
+
+    // ---------- size picker (grid, tap width×height) ----------
+    const MAX_COLS=4, MAX_ROWS=3;
+    function openSizePicker(e, w){
+      e.stopPropagation();
+      closeSizePicker();
+      const item=getLayout().find(x=>x.w===w); if(!item) return;
+      const maxCols=Math.min(MAX_COLS, effectiveColumns());  // can't be wider than the grid
+      const pick=document.createElement("div");
+      pick.className="size-picker"; pick.id="sizePicker";
+      let cells="";
+      for(let r=1;r<=MAX_ROWS;r++) for(let c=1;c<=maxCols;c++){
+        const cur=(item.cols===c && item.rows===r)?"current":"";
+        cells+=`<div class="size-cell ${cur}" data-c="${c}" data-r="${r}"
+          onclick="setCardSize('${w}',${c},${r})"
+          onmouseover="hotCells(this)"></div>`;
+      }
+      pick.innerHTML=`<div class="sp-title">Tap a size (wide × tall)</div>
+        <div class="size-grid" style="grid-template-columns:repeat(${maxCols},1fr)">${cells}</div>`;
+      document.body.appendChild(pick);
+      const r=e.target.getBoundingClientRect();
+      pick.style.top=(window.scrollY+r.bottom+6)+"px";
+      pick.style.left=Math.max(8,(window.scrollX+r.left-60))+"px";
+      setTimeout(()=>document.addEventListener("click", closeSizePickerOnOutside),0);
+    }
+    function hotCells(cell){
+      const c=+cell.dataset.c, r=+cell.dataset.r;
+      cell.parentElement.querySelectorAll(".size-cell").forEach(x=>{
+        x.classList.toggle("hot", (+x.dataset.c<=c && +x.dataset.r<=r));
+      });
+    }
+    function closeSizePicker(){ const p=document.getElementById("sizePicker"); if(p) p.remove(); }
+    function closeSizePickerOnOutside(e){
+      const p=document.getElementById("sizePicker");
+      if(p && !p.contains(e.target)){ closeSizePicker(); document.removeEventListener("click", closeSizePickerOnOutside); }
+    }
+    function setCardSize(w, cols, rows){
       LAYOUT=getLayout();
       const item=LAYOUT.find(x=>x.w===w); if(!item) return;
-      const i=SIZES.indexOf(item.size||"1x1");
-      item.size=SIZES[(i+1)%SIZES.length];
+      item.cols=cols; item.rows=rows;
+      closeSizePicker();
       saveLayout(); renderDash();
-    }
-    function resetLayout(){
-      LAYOUT=defaultLayout();
-      saveLayout();
-      renderDash();
     }
 
     // ---------- drag & drop (pointer-based, works touch + mouse) ----------
@@ -429,27 +546,32 @@
     }
     function onDragMove(e){
       const grid=document.getElementById("grid"); if(!grid||!dragEl) return;
-      const cards=[...grid.querySelectorAll(".wcard:not(.dragging)")];
-      let target=null;
-      for(const c of cards){
+      // follow the pointer visually
+      const gr=grid.getBoundingClientRect();
+      dragEl.style.left=(e.clientX-gr.left-dragEl.offsetWidth/2)+"px";
+      dragEl.style.top=(e.clientY-gr.top-20)+"px";
+      // decide insertion point among the other cards by center distance
+      const others=[...grid.querySelectorAll(".wcard:not(.dragging)")];
+      let target=null, best=Infinity;
+      for(const c of others){
         const r=c.getBoundingClientRect();
-        if(e.clientY < r.top + r.height/2 && e.clientX < r.right){ target=c; break; }
+        const cx=r.left+r.width/2, cy=r.top+r.height/2;
+        const dist=Math.hypot(e.clientX-cx, e.clientY-cy);
+        if(dist<best && (e.clientY<cy || (Math.abs(e.clientY-cy)<r.height/2 && e.clientX<cx))){ best=dist; target=c; }
       }
-      cards.forEach(c=>c.classList.remove("drag-over"));
-      if(target){ target.classList.add("drag-over"); grid.insertBefore(dragEl, target); }
-      else grid.appendChild(dragEl);
+      if(target) grid.insertBefore(dragEl, target); else grid.appendChild(dragEl);
     }
     function endDrag(){
       document.removeEventListener("pointermove", onDragMove);
       if(dragEl) dragEl.classList.remove("dragging");
       window.__dragging = false;
-      document.querySelectorAll(".drag-over").forEach(c=>c.classList.remove("drag-over"));
       // persist new order, keeping each card's size
       const cur=getLayout();
-      const sizeOf=w=>{ const it=cur.find(x=>x.w===w); return it?it.size:"1x1"; };
-      LAYOUT=[...document.querySelectorAll("#grid .wcard")].map(c=>({w:c.dataset.w, size:sizeOf(c.dataset.w)}));
+      const dimsOf=w=>{ const it=cur.find(x=>x.w===w); return it?{cols:it.cols,rows:it.rows}:{cols:1,rows:1}; };
+      LAYOUT=[...document.querySelectorAll("#grid .wcard")].map(c=>({w:c.dataset.w, ...dimsOf(c.dataset.w)}));
       saveLayout();
       dragW=null; dragEl=null;
+      layoutMasonry();   // snap into masonry positions
     }
 
     // ---- Special tasks (Karlie's dashboard list) ----
@@ -496,6 +618,7 @@
       if(!card||!WIDGETS[w]) return;
       card.innerHTML = WIDGETS[w]().body;
       if(w==="inventory_health") drawHealthPie();
+      layoutMasonry();   // content height may have changed
     }
   </script>
 </body>
