@@ -25,7 +25,7 @@ function renderNav(active, isAdmin) {
     const more = document.createElement("a");
     more.href = "#";
     more.className = moreActive;
-    more.innerHTML = `<span class="ico">⋯</span>Admin`;
+    more.innerHTML = `<span class="ico">◆</span>Admin`;
     more.onclick = (e) => { e.preventDefault(); toggleMoreMenu(more); };
     nav.appendChild(more);
   }
@@ -42,7 +42,7 @@ function toggleMoreMenu(anchorEl) {
     "position:fixed;background:#fff;border:1px solid var(--line);"+
     "border-radius:14px;box-shadow:0 8px 30px rgba(61,46,35,.18);z-index:9999;overflow:hidden;min-width:170px";
   menu.innerHTML = `
-    <a href="admin.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>◆</span> Admin</a>
+    <a href="admin.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>◆</span> Pricing Manager</a>
     <a href="reports.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>$</span> Reports</a>
     <a href="team.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso)"><span>☺</span> Manage Team</a>`;
   document.body.appendChild(menu);

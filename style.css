@@ -338,3 +338,12 @@ nav.tabs a { position: relative; }
 .fs-opt.selected { font-weight:700; }
 .fs-menu .fs-actions { display:flex; gap:6px; padding:6px; border-top:1px solid var(--line); margin-top:4px; }
 .fs-menu .fs-actions button { flex:1; font-size:13px; padding:6px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+
+/* link/unlink button in Pricing Manager */
+.linkbtn { background:none; border:1px solid var(--line); border-radius:8px; cursor:pointer; font-size:14px; padding:3px 8px; margin-right:4px; line-height:1; }
+.linkbtn.on { background:var(--butter); border-color:var(--crust); }
+.linkbtn:hover { border-color:var(--crust); }
+/* option price chips in recipe book */
+.opt-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.opt-chip { background:var(--cream); border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:13px; }
+.opt-chip b { color:var(--crust); }
