@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Pricing Manager</title>
-  <link rel="stylesheet" href="style.css?v=1785529387">
+  <link rel="stylesheet" href="style.css?v=1785531464">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1785529387"></script>
-  <script src="nav.js?v=1785529387"></script>
+  <script src="config.js?v=1785531464"></script>
+  <script src="nav.js?v=1785531464"></script>
   <script>
     let IS_ADMIN=false, RECIPES=[], OPTS={}, COST={}, TAB="pricing";
     let COMPANY={id:1}, EXPENSES=[], SALES=[], OH_WINDOW="3";
@@ -121,17 +121,17 @@
               const whole=wholesaleOf(o);
               html+=`<tr>
                 <td><input type="text" value="${(o.option_name||"").replace(/"/g,"&quot;")}" placeholder="(single price)"
-                    style="width:130px" onchange="setOpt(${o.id},'option_name',this.value)"></td>
+                    class="in-label" onchange="setOpt(${o.id},'option_name',this.value)"></td>
                 <td class="num"><span style="color:#a99">$</span><input type="number" step="0.01" value="${o.price??""}" placeholder="—"
-                    style="width:72px;text-align:right" onchange="setOpt(${o.id},'price',this.value)"></td>
+                    class="in-money" onchange="setOpt(${o.id},'price',this.value)"></td>
                 <td style="text-align:center;white-space:nowrap">
                   <button class="linkbtn ${linked?'on':''}" title="${linked?'Linked':'Unlinked'}" onclick="toggleLink(${o.id})">${linked?'🔗':'🔓'}</button>
                   <input type="number" step="1" value="${Math.round((o.wholesale_pct??0.5)*100)}" ${linked?'':'disabled style=opacity:.4'}
-                    style="width:46px;text-align:right" onchange="setPct(${o.id},this.value)">%
+                    class="in-pct" onchange="setPct(${o.id},this.value)">%
                 </td>
                 <td class="num">${linked
                   ? `<span style="font-weight:700;color:var(--crust)">${whole!=null?"$"+whole.toFixed(2):"—"}</span>`
-                  : `<span style="color:#a99">$</span><input type="number" step="0.01" value="${o.wholesale_price??""}" placeholder="—" style="width:72px;text-align:right" onchange="setOpt(${o.id},'wholesale_price',this.value)">`}
+                  : `<span style="color:#a99">$</span><input type="number" step="0.01" value="${o.wholesale_price??""}" placeholder="—" class="in-money" onchange="setOpt(${o.id},'wholesale_price',this.value)">`}
                 </td>
                 <td><button class="mini secondary" style="padding:3px 8px" onclick="delOption(${o.id})">✕</button></td>
               </tr>`;

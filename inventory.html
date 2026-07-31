@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Inventory</title>
-  <link rel="stylesheet" href="style.css?v=1785529387">
+  <link rel="stylesheet" href="style.css?v=1785531464">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1785529387"></script>
-  <script src="nav.js?v=1785529387"></script>
+  <script src="config.js?v=1785531464"></script>
+  <script src="nav.js?v=1785531464"></script>
   <script>
     let ITEMS = [], STATUSSET = new Set(), TYPESET = new Set(), SORTBY = "category", IS_ADMIN = false, MY_ROLE = null, SCOPE = "mine";
 
@@ -85,6 +85,16 @@ function canEditCount(it) {
       else if (SORTBY === "counthi") list.sort((a,b)=>(b.current_on_hand??-1)-(a.current_on_hand??-1));
 
       let html = "";
+      // Admin: link to the Units page, and flag any items with vague units
+      if (IS_ADMIN) {
+        const vague = ITEMS.filter(i=>i.units_need_review).length;
+        html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="stat-label">${vague
+            ? `<span style="color:var(--berry);font-weight:700">${vague} item${vague===1?"":"s"} need a real unit</span> (e.g. "bag" with no size)`
+            : `All items use standard units.`}</span>
+          <button class="mini ${vague?"":"secondary"}" onclick="location.href='units.html'">Units →</button>
+        </div>`;
+      }
       // Scope tabs (only meaningful if the person has a role)
       if (MY_ROLE || IS_ADMIN) {
         const mineLabel = MY_ROLE ? `My Items (${roleLabel(MY_ROLE)})` : "My Items";
@@ -181,7 +191,7 @@ function canEditCount(it) {
               : `<div style="font-size:15px">${it.name}
                    ${below?'<span class="pill below">BELOW</span>':''}
                    ${it.order_extra?'<span class="pill extra">EXTRA</span>':''}</div>
-                 <div class="sub">min ${it.min_on_hand??"—"} · threshold ${it.threshold??"—"}${it.unit?" · "+it.unit:""}${IS_ADMIN&&it.unit_cost!=null?` · $${it.unit_cost}/unit`:""}</div>`}
+                 <div class="sub">min ${it.min_on_hand??"—"} · threshold ${it.threshold??"—"}${unitLabel(it)}${IS_ADMIN&&it.unit_cost!=null?` · $${it.unit_cost}/${it.pack_unit||"unit"}${it.cost_is_estimate?' <span style="color:var(--honey);font-weight:700">est.</span>':''}`:""}</div>`}
             <div style="margin-top:4px">
               <button class="tbtn extra ${it.order_extra?"on":""}" onclick="setExtra(${it.id}, ${!it.order_extra})">
                 <span class="dot">${it.order_extra?"●":"○"}</span> Order extra</button>
@@ -224,7 +234,18 @@ function canEditCount(it) {
     }
     async function setExtra(id,on){ const it=ITEMS.find(i=>i.id===id); it.order_extra=on; await sb.from("inventory_items").update({order_extra:on}).eq("id",id); render(); }
     async function setCounted(id,on){ const it=ITEMS.find(i=>i.id===id); if(!canEditCount(it)) return; it.counted_this_week=on; await sb.from("inventory_items").update({counted_this_week:on}).eq("id",id); render(); }
-    async function setCost(id,val){ const n=val===""?null:Number(val); ITEMS.find(i=>i.id===id).unit_cost=n; await sb.from("inventory_items").update({unit_cost:n}).eq("id",id); }
+    // Shows "bag of 50 lb" for pack items, "lb" for direct ones, flags vague ones.
+    function unitLabel(it){
+      if (it.units_need_review) return ' · <span style="color:var(--berry);font-weight:700">unit?</span>';
+      if (it.pack_unit && it.base_unit && it.pack_unit !== it.base_unit)
+        return ` · ${it.pack_unit} of ${it.pack_size} ${it.base_unit}`;
+      if (it.base_unit) return ` · ${it.base_unit}`;
+      return it.unit ? " · "+it.unit : "";
+    }
+
+    async function setCost(id,val){ const n=val===""?null:Number(val); const it=ITEMS.find(i=>i.id===id);
+      it.unit_cost=n; it.cost_is_estimate=false;   // a typed cost is a real one
+      await sb.from("inventory_items").update({unit_cost:n, cost_is_estimate:false}).eq("id",id); render(); }
     async function setField(id, field, val){
       let v = val;
       if (field==="threshold") v = (val===""?null:Number(val));

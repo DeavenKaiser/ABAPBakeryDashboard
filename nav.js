@@ -19,18 +19,53 @@ function renderNav(active, isAdmin) {
        <span class="ico">${t.ico}</span>${t.label}
      </a>`).join("");
 
-  // Admin: group the occasional tools (Reports, Team) under an Admin menu
+  // Admin tools. On a large screen there's room to show them directly;
+  // on smaller screens they collapse under a single "Admin" menu button.
+  const ADMIN_ITEMS = [
+    { id: "admin",    href: "admin.html",    ico: "◆", label: "Pricing" },
+    { id: "expenses", href: "expenses.html", ico: "$", label: "Expenses" },
+    { id: "company",  href: "company.html",  ico: "⌂", label: "Company" },
+    { id: "reports",  href: "reports.html",  ico: "▤", label: "Reports" },
+    { id: "team",     href: "team.html",     ico: "☺", label: "Team" },
+  ];
   if (isAdmin) {
-    const moreActive = (active === "reports" || active === "team" || active === "admin" || active === "expenses" || active === "company") ? "active" : "";
-    const more = document.createElement("a");
-    more.href = "#";
-    more.className = moreActive;
-    more.innerHTML = `<span class="ico">◆</span>Admin`;
-    more.onclick = (e) => { e.preventDefault(); toggleMoreMenu(more); };
-    nav.appendChild(more);
+    const roomy = window.matchMedia("(min-width: 1000px) and (min-height: 640px)").matches;
+    if (roomy) {
+      ADMIN_ITEMS.forEach(t => {
+        const a = document.createElement("a");
+        a.href = t.href;
+        a.className = (t.id === active ? "active" : "");
+        a.innerHTML = `<span class="ico">${t.ico}</span>${t.label}`;
+        nav.appendChild(a);
+      });
+    } else {
+      const moreActive = ADMIN_ITEMS.some(t => t.id === active) ? "active" : "";
+      const more = document.createElement("a");
+      more.href = "#";
+      more.className = moreActive;
+      more.innerHTML = `<span class="ico">◆</span>Admin`;
+      more.onclick = (e) => { e.preventDefault(); toggleMoreMenu(more); };
+      nav.appendChild(more);
+    }
   }
   document.body.appendChild(nav);
   if (isAdmin) addBelowBadge();
+
+  // Re-render the nav if the window crosses the grouping breakpoint.
+  if (isAdmin && !window.__navResizeHooked) {
+    window.__navResizeHooked = true;
+    let t=null;
+    window.addEventListener("resize", () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const menu = document.getElementById("moreMenu");
+        if (menu) menu.remove();
+        const existing = document.querySelector("nav.tabs");
+        if (existing) existing.remove();
+        renderNav(active, isAdmin);
+      }, 200);
+    });
+  }
 }
 
 function toggleMoreMenu(anchorEl) {

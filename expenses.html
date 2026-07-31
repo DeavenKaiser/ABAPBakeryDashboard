@@ -4,15 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Expenses</title>
-  <link rel="stylesheet" href="style.css?v=1785529387">
+  <link rel="stylesheet" href="style.css?v=1785531464">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
 <body class="dash">
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1785529387"></script>
-  <script src="nav.js?v=1785529387"></script>
+  <script src="config.js?v=1785531464"></script>
+  <script src="nav.js?v=1785531464"></script>
   <script>
     let IS_ADMIN=false, EXPENSES=[], SALES=[];
 
@@ -60,8 +60,8 @@
         <h3 style="font-family:'Fraunces',serif;margin:0 0 8px">Add an expense</h3>
         <div class="fs-bar">
           <input type="text" id="exName" placeholder="e.g. Electric bill" style="flex:2;min-width:140px">
-          <span style="color:#a99">$</span><input type="number" step="0.01" id="exAmt" placeholder="0.00" style="width:90px">
-          <select id="exPeriod" style="padding:8px;border-radius:8px;border:1px solid var(--line)">
+          <span style="color:#a99">$</span><input type="number" step="0.01" id="exAmt" placeholder="0.00" class="in-money">
+          <select id="exPeriod" >
             <option value="monthly">per month</option>
             <option value="yearly">per year</option>
             <option value="one-time">one-time</option>
@@ -92,8 +92,8 @@
         <div class="card" style="margin-bottom:10px">
           <div class="stat-label" style="margin-bottom:8px">Enter total sales for a month. More months = steadier overhead %.</div>
           <div class="fs-bar">
-            <input type="month" id="salMonth" value="${thisMonth}" style="padding:8px;border-radius:8px;border:1px solid var(--line)">
-            <span style="color:#a99">$</span><input type="number" step="0.01" id="salAmt" placeholder="total sales" value="${existing?existing.amount:""}" style="width:120px">
+            <input type="month" id="salMonth" value="${thisMonth}" >
+            <span style="color:#a99">$</span><input type="number" step="0.01" id="salAmt" placeholder="total sales" value="${existing?existing.amount:""}" class="in-money">
             <button class="mini" onclick="saveSales()">Save month</button>
           </div>`;
       if(SALES.length){
