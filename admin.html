@@ -17,11 +17,240 @@
   <script>
     let IS_ADMIN=false, PRICING=[];
     let SHEET_SEL=new Set(), SHEET_PRICE="wholesale";
+    let PRICING_EDIT_MODE=false;
+    let ADMIN_VIEW="pricing";
+    let CSV_IMPORT_STATUS="";
+    let PRICING_SETTINGS={ itemOverrides:{}, itemValues:{}, itemLinks:{} };
+    let COMPANY_SETTINGS={ companyName:"ABAP Bakery", currencySymbol:"$", defaultOverheadPct:10, defaultWholesaleLinkPct:50 };
+
+    function loadCompanySettings(){
+      try {
+        const saved = JSON.parse(localStorage.getItem("abapCompanySettings") || "null");
+        if (saved) {
+          COMPANY_SETTINGS = {
+            companyName: saved.companyName || "ABAP Bakery",
+            currencySymbol: saved.currencySymbol || "$",
+            defaultOverheadPct: Number(saved.defaultOverheadPct) || 10,
+            defaultWholesaleLinkPct: Number(saved.defaultWholesaleLinkPct) || 50
+          };
+        }
+      } catch (e) {}
+    }
+    function saveCompanySettings(){ localStorage.setItem("abapCompanySettings", JSON.stringify(COMPANY_SETTINGS)); }
+
+    function loadPricingSettings(){
+      try {
+        const saved = JSON.parse(localStorage.getItem("abapPricingSettings") || "null");
+        if (saved) {
+          PRICING_SETTINGS = {
+            itemOverrides: saved.itemOverrides || {},
+            itemValues: saved.itemValues || {},
+            itemLinks: saved.itemLinks || {}
+          };
+        }
+      } catch (e) {}
+    }
+    function savePricingSettings(){ localStorage.setItem("abapPricingSettings", JSON.stringify(PRICING_SETTINGS)); }
+
+    function togglePricingEdit(){ PRICING_EDIT_MODE = !PRICING_EDIT_MODE; render(); }
+    function setAdminView(view){ ADMIN_VIEW = view; render(); }
+    function updateCompanySetting(field, value){
+      COMPANY_SETTINGS[field] = (field === "defaultOverheadPct" || field === "defaultWholesaleLinkPct")
+        ? Math.max(0, Math.min(100, Number(value) || 0))
+        : value;
+      saveCompanySettings(); render();
+    }
+
+    function getItemLinkState(item){ return PRICING_SETTINGS.itemLinks[item.id] !== false; }
+    function getItemOverheadPct(item){
+      const override = !!PRICING_SETTINGS.itemOverrides[item.id];
+      if (override) {
+        const stored = PRICING_SETTINGS.itemValues[item.id] || {};
+        if (stored.pct != null) return Number(stored.pct);
+      }
+      return Number(COMPANY_SETTINGS.defaultOverheadPct) || 0;
+    }
+    function getDefaultConsumerValue(item){
+      const retail = item.suggested_retail != null ? Number(item.suggested_retail) : null;
+      const wholesale = item.suggested_wholesale != null ? Number(item.suggested_wholesale) : null;
+      const linkPct = Number(COMPANY_SETTINGS.defaultWholesaleLinkPct) || 0;
+      if (wholesale != null && linkPct > 0) return wholesale / (linkPct / 100);
+      return retail;
+    }
+    function getItemConsumerValue(item){
+      const stored = PRICING_SETTINGS.itemValues[item.id] || {};
+      if (stored.consumer != null) return Number(stored.consumer);
+      return getDefaultConsumerValue(item);
+    }
+    function getItemWholesaleValue(item){
+      const stored = PRICING_SETTINGS.itemValues[item.id] || {};
+      if (stored.wholesale != null) return Number(stored.wholesale);
+      const consumer = getItemConsumerValue(item);
+      const linkPct = Number(COMPANY_SETTINGS.defaultWholesaleLinkPct) || 0;
+      if (consumer != null && linkPct > 0) return consumer * (linkPct / 100);
+      return item.suggested_wholesale != null ? Number(item.suggested_wholesale) : null;
+    }
+    function getItemIngredientCost(item){
+      return item.ingredient_cost != null ? Number(item.ingredient_cost) : 0;
+    }
+    function getMarginMetrics(item, price){
+      const ingredientCost = getItemIngredientCost(item);
+      const overheadPct = getItemOverheadPct(item);
+      const overheadAmount = ingredientCost * (overheadPct / 100);
+      const margin = price - (ingredientCost + overheadAmount);
+      const pct = price > 0 ? (margin / price) * 100 : 0;
+      return { amount: margin, percent: pct, overheadAmount };
+    }
+    function toggleItemCustom(id, on){
+      if (on) PRICING_SETTINGS.itemOverrides[id] = true;
+      else delete PRICING_SETTINGS.itemOverrides[id];
+      savePricingSettings(); render();
+    }
+    function setItemLinkState(id, linked){ PRICING_SETTINGS.itemLinks[id] = linked; savePricingSettings(); render(); }
+    function setItemConsumer(id, value){
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return;
+      if (!PRICING_SETTINGS.itemValues[id]) PRICING_SETTINGS.itemValues[id] = {};
+      PRICING_SETTINGS.itemValues[id].consumer = numeric;
+      const item = PRICING.find(x => x.id === id);
+      if (item && getItemLinkState(item)) {
+        const linkPct = Number(COMPANY_SETTINGS.defaultWholesaleLinkPct) || 0;
+        PRICING_SETTINGS.itemValues[id].wholesale = linkPct > 0 ? numeric * (linkPct / 100) : numeric;
+      }
+      savePricingSettings(); render();
+    }
+    function setItemWholesale(id, value){
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return;
+      if (!PRICING_SETTINGS.itemValues[id]) PRICING_SETTINGS.itemValues[id] = {};
+      PRICING_SETTINGS.itemValues[id].wholesale = numeric;
+      const item = PRICING.find(x => x.id === id);
+      if (item && getItemLinkState(item)) {
+        const linkPct = Number(COMPANY_SETTINGS.defaultWholesaleLinkPct) || 0;
+        PRICING_SETTINGS.itemValues[id].consumer = linkPct > 0 ? numeric / (linkPct / 100) : numeric;
+      }
+      savePricingSettings(); render();
+    }
+    function setItemPct(id, value){
+      const pct = Math.max(0, Math.min(100, Number(value) || 0));
+      if (!Number.isFinite(pct)) return;
+      if (!PRICING_SETTINGS.itemValues[id]) PRICING_SETTINGS.itemValues[id] = {};
+      PRICING_SETTINGS.itemValues[id].pct = pct;
+      PRICING_SETTINGS.itemOverrides[id] = true;
+      savePricingSettings(); render();
+    }
+    function getEffectiveRetailPrice(item){ return getItemConsumerValue(item); }
+    function getEffectiveWholesalePrice(item){ return getItemWholesaleValue(item); }
+    function currency(v){ return v != null ? COMPANY_SETTINGS.currencySymbol + Number(v).toFixed(2) : "—"; }
+
+    function normalizeCsvName(value){
+      const raw = String(value || "").toLowerCase();
+      const cleaned = raw.replace(/[^a-z0-9]+/g, " ").trim();
+      const stopWords = new Set(["the","and","of","to","for","a","an","with","bag","bags","box","boxes","package","packages","pkg","pkgs","regular","small","medium","large","mini","jumbo","multi","color","colors","variation","var","size","sizes","piece","pieces","x","lb","lbs"]);
+      return cleaned.split(/\s+/).filter(Boolean).filter(token => !/^\d+$/.test(token) && !stopWords.has(token)).map(token => token.endsWith("s") && token.length > 3 ? token.slice(0, -1) : token).join(" ");
+    }
+    function getNameSimilarity(a, b){
+      const na = normalizeCsvName(a);
+      const nb = normalizeCsvName(b);
+      if (!na || !nb) return 0;
+      if (na === nb) return 1;
+      if (na.includes(nb) || nb.includes(na)) return 0.95;
+      const aTokens = na.split(/\s+/).filter(Boolean);
+      const bTokens = nb.split(/\s+/).filter(Boolean);
+      if (!aTokens.length || !bTokens.length) return 0;
+      const overlap = aTokens.filter(token => bTokens.includes(token)).length;
+      const union = new Set([...aTokens, ...bTokens]).size;
+      if (!union) return 0;
+      return overlap / union;
+    }
+    function parseCsv(text){
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '"') {
+          if (inQuotes && text[i + 1] === '"') {
+            cell += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (ch === ',' && !inQuotes) {
+          row.push(cell);
+          cell = "";
+        } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+          if (ch === '\r' && text[i + 1] === '\n') i++;
+          row.push(cell);
+          if (row.some(v => v !== "")) rows.push(row);
+          row = [];
+          cell = "";
+        } else {
+          cell += ch;
+        }
+      }
+      if (cell.length || row.length) {
+        row.push(cell);
+        if (row.some(v => v !== "")) rows.push(row);
+      }
+      if (!rows.length) return [];
+      const headers = rows[0].map(h => String(h).trim());
+      return rows.slice(1).filter(r => r.some(v => v !== "")).map(r => {
+        const obj = {};
+        headers.forEach((header, idx) => { obj[header] = r[idx] != null ? r[idx] : ""; });
+        return obj;
+      });
+    }
+    function importPricingCsv(file){
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const rows = parseCsv(reader.result || "");
+          let matched = 0;
+          let scanned = 0;
+          rows.forEach(row => {
+            const itemName = row["Item Name"] || row["Name"] || row["name"] || row["item name"] || "";
+            const priceValue = row["Price"] || row["price"] || row["Customer-facing Price"] || row["customer-facing price"] || "";
+            const price = Number(priceValue);
+            if (!itemName || !Number.isFinite(price) || price <= 0) return;
+            scanned++;
+            let best = null;
+            PRICING.forEach(item => {
+              const score = getNameSimilarity(itemName, item.name);
+              if (score > 0.6 && (!best || score > best.score)) best = { item, score };
+            });
+            if (!best) return;
+            const { item } = best;
+            if (!PRICING_SETTINGS.itemValues[item.id]) PRICING_SETTINGS.itemValues[item.id] = {};
+            PRICING_SETTINGS.itemValues[item.id].consumer = price;
+            PRICING_SETTINGS.itemOverrides[item.id] = true;
+            if (getItemLinkState(item)) {
+              const linkPct = Number(COMPANY_SETTINGS.defaultWholesaleLinkPct) || 0;
+              PRICING_SETTINGS.itemValues[item.id].wholesale = linkPct > 0 ? price * (linkPct / 100) : price;
+            }
+            matched++;
+          });
+          savePricingSettings();
+          CSV_IMPORT_STATUS = matched > 0
+            ? `Imported ${matched} matching consumer price${matched === 1 ? "" : "s"} from ${scanned} CSV row${scanned === 1 ? "" : "s"}.`
+            : `No matching items were found in the CSV. Try a file with item names similar to the pricing list.`;
+          render();
+        } catch (e) {
+          CSV_IMPORT_STATUS = "The CSV could not be read. Please try another file.";
+          render();
+        }
+      };
+      reader.readAsText(file);
+    }
 
     (async () => {
       if (!(await requireLogin())) return;
       const prof = await getMyProfile();
       IS_ADMIN = prof && prof.role==="admin";
+      loadCompanySettings();
+      loadPricingSettings();
       await renderTopbar("Admin", prof);
       renderNav("admin", IS_ADMIN);
       if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
@@ -34,17 +263,72 @@
       const app=document.getElementById("app");
       let html=`<div class="hero" style="padding:18px 22px">
         <div><h1 style="font-size:22px">Admin</h1>
-        <div class="sub">Pricing sheets & tools</div></div>
+        <div class="sub">Company settings, pricing setup & print sheets</div></div>
       </div>`;
-      html+=`<h2 class="section">Price sheet builder</h2>`;
-      html+=sheetView();
+      html+=`<div class="fs-bar" style="margin-bottom:12px;flex-wrap:wrap">
+        <button class="fs-btn ${ADMIN_VIEW==="settings"?"active":""}" onclick="setAdminView('settings')">Company settings</button>
+        <button class="fs-btn ${ADMIN_VIEW==="pricing"?"active":""}" onclick="setAdminView('pricing')">Pricing setup</button>
+      </div>`;
+      if (ADMIN_VIEW === "settings") {
+        html += companySettingsView();
+      } else {
+        html += sheetView();
+      }
       app.innerHTML=html;
+    }
+
+    function companySettingsView(){
+      return `<div class="card">
+        <h3 style="font-family:'Fraunces',serif;margin:0 0 10px">Company settings</h3>
+        <div class="stat-label" style="margin-bottom:10px">Standard values used to calculate pricing and profit across items.</div>
+        <div style="display:grid;gap:10px">
+          <label class="stat-label" style="display:flex;align-items:center;gap:8px">Company name
+            <input type="text" value="${COMPANY_SETTINGS.companyName}" onchange="updateCompanySetting('companyName', this.value)" style="flex:1;max-width:260px">
+          </label>
+          <label class="stat-label" style="display:flex;align-items:center;gap:8px">Currency symbol
+            <input type="text" value="${COMPANY_SETTINGS.currencySymbol}" maxlength="3" onchange="updateCompanySetting('currencySymbol', this.value)" style="width:60px">
+          </label>
+          <label class="stat-label" style="display:flex;align-items:center;gap:8px">Default wholesale share of consumer price %
+            <input type="number" min="0" max="100" step="1" value="${COMPANY_SETTINGS.defaultWholesaleLinkPct}" onchange="updateCompanySetting('defaultWholesaleLinkPct', this.value)" style="width:80px">
+          </label>
+          <label class="stat-label" style="display:flex;align-items:center;gap:8px">Standard overhead %
+            <input type="number" min="0" max="100" step="1" value="${COMPANY_SETTINGS.defaultOverheadPct}" onchange="updateCompanySetting('defaultOverheadPct', this.value)" style="width:80px">
+          </label>
+        </div>
+      </div>`;
     }
 
     function sheetView(){
       let html = `<div class="card">
-        <div class="stat-label" style="margin-bottom:8px">Pick the items to include, choose a price type, then generate a clean sheet you can print or save as PDF for customers.</div>
-        <div class="fs-bar" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <div>
+            <div style="font-weight:700;margin-bottom:4px">Wholesale & retail pricing</div>
+            <div class="stat-label">Set the standard overhead margin, then edit each item’s wholesale, percentage, and consumer price as needed.</div>
+          </div>
+          <button class="mini" onclick="togglePricingEdit()">${PRICING_EDIT_MODE ? "Done editing" : "Edit"}</button>
+        </div>`;
+      if (PRICING_EDIT_MODE) {
+        html += `<div class="fs-bar" style="margin-bottom:10px;flex-wrap:wrap">
+          <label class="stat-label" style="display:flex;align-items:center;gap:6px">Wholesale link % of consumer price
+            <input type="number" min="0" max="100" step="1" value="${COMPANY_SETTINGS.defaultWholesaleLinkPct}" onchange="updateCompanySetting('defaultWholesaleLinkPct', this.value)" style="width:80px">
+          </label>
+          <label class="stat-label" style="display:flex;align-items:center;gap:6px">Standard overhead %
+            <input type="number" min="0" max="100" step="1" value="${COMPANY_SETTINGS.defaultOverheadPct}" onchange="updateCompanySetting('defaultOverheadPct', this.value)" style="width:80px">
+          </label>
+        </div>`;
+      }
+      html += `<div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700;margin-bottom:4px">CSV import</div>
+            <div class="stat-label">Upload a catalog export to set consumer prices for matching items in the pricing list.</div>
+          </div>
+          <label class="mini" style="cursor:pointer">Choose CSV<input type="file" accept=".csv,text/csv" onchange="importPricingCsv(this.files[0])" style="display:none"></label>
+        </div>
+        ${CSV_IMPORT_STATUS ? `<div class="stat-label" style="margin-top:8px;color:#7F9B6E">${CSV_IMPORT_STATUS}</div>` : ""}
+      </div>`;
+      html += `<div class="stat-label" style="margin-bottom:8px">Pick the items to include, choose a price type, then generate a clean sheet you can print or save as PDF for customers.</div>
+        <div class="fs-bar" style="margin-bottom:10px;flex-wrap:wrap">
           <label class="fs-btn"><input type="radio" name="ptype" ${SHEET_PRICE==="wholesale"?"checked":""} onchange="SHEET_PRICE='wholesale';render()"> Wholesale prices</label>
           <label class="fs-btn"><input type="radio" name="ptype" ${SHEET_PRICE==="retail"?"checked":""} onchange="SHEET_PRICE='retail';render()"> Retail prices</label>
           <button class="fs-btn" onclick="sheetSelectAll(true)">Select all</button>
@@ -57,12 +341,32 @@
       Object.keys(byCat).sort().forEach(cat=>{
         html+=`<div class="card"><h3 style="font-family:'Fraunces',serif;margin:0 0 10px">${cat}</h3>`;
         byCat[cat].sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
-          const price = SHEET_PRICE==="wholesale" ? p.suggested_wholesale : p.suggested_retail;
-          html+=`<label class="mini-item" style="cursor:pointer">
-            <input type="checkbox" ${SHEET_SEL.has(p.id)?"checked":""} onchange="toggleSheet(${p.id})">
-            <span style="flex:1">${p.name}</span>
-            <span class="stat-label">${price!=null?"$"+Number(price).toFixed(2):"— set price —"}</span>
-          </label>`;
+          const isOverridden = !!PRICING_SETTINGS.itemOverrides[p.id];
+          const linked = getItemLinkState(p);
+          const pct = getItemOverheadPct(p);
+          const consumer = getItemConsumerValue(p);
+          const wholesale = getItemWholesaleValue(p);
+          const wholesaleMargins = getMarginMetrics(p, wholesale);
+          const consumerMargins = getMarginMetrics(p, consumer);
+          html+=`<div class="mini-item" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <label style="cursor:pointer;display:flex;align-items:center;gap:8px;flex:1;min-width:220px">
+              <input type="checkbox" ${SHEET_SEL.has(p.id)?"checked":""} onchange="toggleSheet(${p.id})">
+              <span style="flex:1">${p.name}</span>
+            </label>
+            <span class="stat-label">Wholesale ${currency(wholesale)}</span>
+            <span class="stat-label">Consumer ${currency(consumer)}</span>`;
+          html += `<div style="display:flex;flex-direction:column;gap:2px;min-width:180px">
+            <span class="stat-label" style="color:#7F9B6E">Wholesale margin ${currency(wholesaleMargins.amount)} (${wholesaleMargins.percent.toFixed(1)}%)</span>
+            <span class="stat-label" style="color:#7F9B6E">Consumer margin ${currency(consumerMargins.amount)} (${consumerMargins.percent.toFixed(1)}%)</span>
+          </div>`;
+          if (PRICING_EDIT_MODE) {
+            html += `<button type="button" class="fs-btn" onclick="setItemLinkState(${p.id}, ${linked ? "false" : "true"})">${linked ? "🔗 Linked" : "↺ Unlinked"}</button>`;
+            html += `<button type="button" class="fs-btn" onclick="toggleItemCustom(${p.id}, ${isOverridden ? "false" : "true"})">${isOverridden ? "⚙ Custom" : "↺ Default"}</button>`;
+            html += `<label class="stat-label" style="display:flex;align-items:center;gap:4px">Wholesale<input type="number" min="0" step="0.01" value="${wholesale != null ? wholesale.toFixed(2) : ""}" onchange="setItemWholesale(${p.id}, this.value)" style="width:78px"></label>`;
+            html += `<label class="stat-label" style="display:flex;align-items:center;gap:4px">Overhead %<input type="number" min="0" max="100" step="1" value="${pct}" onchange="setItemPct(${p.id}, this.value)" style="width:58px"></label>`;
+            html += `<label class="stat-label" style="display:flex;align-items:center;gap:4px">Consumer<input type="number" min="0" step="0.01" value="${consumer != null ? consumer.toFixed(2) : ""}" onchange="setItemConsumer(${p.id}, this.value)" style="width:78px"></label>`;
+          }
+          html += `</div>`;
         });
         html+=`</div>`;
       });
@@ -74,9 +378,9 @@
     function generateSheet(){
       const items = PRICING.filter(p=>SHEET_SEL.has(p.id))
         .sort((a,b)=>(a.category||"").localeCompare(b.category||"")||a.name.localeCompare(b.name));
-      const priceOf = p => SHEET_PRICE==="wholesale" ? p.suggested_wholesale : p.suggested_retail;
+      const priceOf = p => SHEET_PRICE==="wholesale" ? getEffectiveWholesalePrice(p) : getEffectiveRetailPrice(p);
       const today = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
-      const title = SHEET_PRICE==="wholesale" ? "Wholesale Price Sheet" : "Price Sheet";
+      const title = SHEET_PRICE==="wholesale" ? "Wholesale Pricing Sheet" : "Retail Pricing Sheet";
       const byCat={};
       items.forEach(p=>{ (byCat[p.category||"Other"]||=[]).push(p); });
       let rows="";

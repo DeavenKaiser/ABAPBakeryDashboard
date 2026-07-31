@@ -19,13 +19,13 @@ function renderNav(active, isAdmin) {
        <span class="ico">${t.ico}</span>${t.label}
      </a>`).join("");
 
-  // Admin: group the occasional tools (Reports, Team) under a "More" menu
+  // Admin: group the occasional tools (Reports, Team) under an Admin menu
   if (isAdmin) {
     const moreActive = (active === "reports" || active === "team" || active === "admin") ? "active" : "";
     const more = document.createElement("a");
     more.href = "#";
     more.className = moreActive;
-    more.innerHTML = `<span class="ico">⋯</span>More`;
+    more.innerHTML = `<span class="ico">⋯</span>Admin`;
     more.onclick = (e) => { e.preventDefault(); toggleMoreMenu(more); };
     nav.appendChild(more);
   }
