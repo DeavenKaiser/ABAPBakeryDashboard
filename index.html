@@ -4,14 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ABAP Bakery — Sign In</title>
-  <link rel="stylesheet" href="style.css?v=1784932750">
+  <link rel="stylesheet" href="style.css?v=1785457116">
   <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
   <meta name="theme-color" content="#6B4F3A">
 </head>
 <body>
   <div class="wrap">
     <div class="card login-box">
-      <h1>ABAP Bakery</h1>
+      <img src="logo.svg" alt="ABAP Bakery" style="width:96px;height:96px;display:block;margin:0 auto 10px" onerror="this.style.display='none'">
+      <h1 style="text-align:center">ABAP Bakery</h1>
       <p class="muted center">Team Operations</p>
       <div class="field">
         <label>Email</label>
@@ -27,7 +30,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1784932750"></script>
+  <script src="config.js?v=1785457116"></script>
   <script>
     // If already signed in, skip straight to the app.
     (async () => {

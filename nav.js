@@ -89,9 +89,12 @@ async function renderTopbar(title, prof) {
   bar.className = "topbar";
   const roleTag = prof && prof.role === "admin" ? `<span class="rolechip">admin</span>` : "";
   bar.innerHTML = `
-    <div>
-      <h1>${title}</h1>
-      <div class="who">${prof ? prof.full_name : ""} ${roleTag}</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="logo.svg" alt="" style="width:34px;height:34px;flex:none" onerror="this.style.display='none'">
+      <div>
+        <h1>${title}</h1>
+        <div class="who">${prof ? prof.full_name : ""} ${roleTag}</div>
+      </div>
     </div>
     <button class="secondary" onclick="signOut()" style="padding:8px 12px;font-size:13px">Sign out</button>`;
   document.body.prepend(bar);
