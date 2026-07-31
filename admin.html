@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Pricing Manager</title>
-  <link rel="stylesheet" href="style.css?v=1785523269">
+  <link rel="stylesheet" href="style.css?v=1785527375">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,11 +12,12 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1785523269"></script>
-  <script src="nav.js?v=1785523269"></script>
+  <script src="config.js?v=1785527375"></script>
+  <script src="nav.js?v=1785527375"></script>
   <script>
-    let IS_ADMIN=false, RECIPES=[], OPTS={}, TAB="pricing";
-    let SHEET_SEL=new Set(), SHEET_PRICE="wholesale";
+    let IS_ADMIN=false, RECIPES=[], OPTS={}, COST={}, TAB="pricing";
+    let COMPANY={id:1}, EXPENSES=[], SALES=[], OH_WINDOW="3";
+    let SHEET_SEL=new Set(), SHEET_PRICE="wholesale", MARGIN_CHAN="consumer";
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -29,14 +30,46 @@
     })();
 
     async function load(){
-      const [{data:recs},{data:opts}] = await Promise.all([
+      const [{data:recs},{data:opts},{data:ings},{data:company},{data:exp},{data:sales}] = await Promise.all([
         sb.from("recipes").select("id,name,category").eq("active",true).order("category").order("name"),
         sb.from("recipe_options").select("*").order("sort_order"),
+        sb.from("recipe_ingredients").select("recipe_id,est_cost"),
+        sb.from("company_info").select("*").eq("id",1).maybeSingle(),
+        sb.from("expenses").select("*").eq("active",true).order("created_at"),
+        sb.from("monthly_sales").select("*").order("month_key"),
       ]);
       RECIPES = recs||[];
       OPTS = {};
       (opts||[]).forEach(o=>{ (OPTS[o.recipe_id] ||= []).push(o); });
+      COST = {};
+      (ings||[]).forEach(i=>{ COST[i.recipe_id] = (COST[i.recipe_id]||0) + (i.est_cost!=null?Number(i.est_cost):0); });
+      COMPANY = company || {id:1};
+      EXPENSES = exp || [];
+      SALES = sales || [];
       render();
+    }
+    function recipeCost(id){ return COST[id]||0; }
+
+    // ---- overhead math ----
+    function monthlyOverhead(){
+      return EXPENSES.reduce((s,e)=>{
+        const a=Number(e.amount)||0;
+        if(e.period==="monthly") return s+a;
+        if(e.period==="yearly") return s+a/12;
+        if(e.period==="one-time") return s+a/12;
+        return s;
+      },0);
+    }
+    // Overhead % = average of (monthly overhead ÷ that month's sales) over a window.
+    function overheadPct(){
+      const oh = monthlyOverhead();
+      if(oh<=0 || !SALES.length) return 0;
+      let months = SALES.slice().sort((a,b)=>a.month_key.localeCompare(b.month_key));
+      if(OH_WINDOW==="3") months = months.slice(-3);
+      else if(OH_WINDOW==="6") months = months.slice(-6);
+      const ratios = months.map(m=>{ const s=Number(m.amount)||0; return s>0 ? oh/s : null; }).filter(x=>x!=null);
+      if(!ratios.length) return 0;
+      return ratios.reduce((a,b)=>a+b,0)/ratios.length;   // fraction, e.g. 0.18
     }
 
     function round2(n){ return Math.round(Number(n)*100)/100; }
@@ -54,9 +87,16 @@
       </div>`;
       html+=`<div class="card" style="margin-bottom:14px"><div class="fs-bar">
         <button class="${TAB==="pricing"?"":"secondary"}" onclick="TAB='pricing';render()">Prices</button>
+        <button class="${TAB==="margins"?"":"secondary"}" onclick="TAB='margins';render()">Margins</button>
         <button class="${TAB==="sheet"?"":"secondary"}" onclick="TAB='sheet';render()">Price Sheet</button>
+        <button class="${TAB==="expenses"?"":"secondary"}" onclick="TAB='expenses';render()">Expenses</button>
+        <button class="${TAB==="company"?"":"secondary"}" onclick="TAB='company';render()">Company</button>
       </div></div>`;
-      html += (TAB==="pricing") ? pricesView() : sheetView();
+      html += (TAB==="pricing") ? pricesView()
+            : (TAB==="margins") ? marginsView()
+            : (TAB==="expenses") ? expensesView()
+            : (TAB==="company") ? companyView()
+            : sheetView();
       app.innerHTML=html;
     }
 
@@ -144,6 +184,78 @@
       render();
     }
 
+    // ---------- Margins / profit view ----------
+    function marginsView(){
+      const ohPct = overheadPct();
+      const ohMonthly = monthlyOverhead();
+      let html=`<div class="card"><div class="stat-label">
+        Profit and margin use your <strong>real prices</strong> minus the recipe's ingredient cost
+        <strong>plus overhead</strong>. Overhead % is your monthly overhead as a share of sales,
+        applied to each item's price. Margin % = profit ÷ price.</div></div>`;
+
+      // overhead summary + window switch
+      html+=`<div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">
+          <div>
+            <div style="font-size:22px;font-weight:800;color:var(--crust)">${(ohPct*100).toFixed(1)}% <span class="stat-label" style="font-weight:400">overhead</span></div>
+            <div class="stat-label">$${ohMonthly.toFixed(0)}/mo overhead · from ${SALES.length} month${SALES.length===1?"":"s"} of sales</div>
+          </div>
+          <div class="fs-bar">
+            <label class="fs-btn"><input type="radio" name="ohw" ${OH_WINDOW==="3"?"checked":""} onchange="OH_WINDOW='3';render()"> Rolling 3</label>
+            <label class="fs-btn"><input type="radio" name="ohw" ${OH_WINDOW==="6"?"checked":""} onchange="OH_WINDOW='6';render()"> Rolling 6</label>
+            <label class="fs-btn"><input type="radio" name="ohw" ${OH_WINDOW==="all"?"checked":""} onchange="OH_WINDOW='all';render()"> All months</label>
+          </div>
+        </div>
+        ${(!SALES.length||ohMonthly<=0)?`<div class="stat-label" style="margin-top:8px;color:var(--berry)">Add expenses and at least one month of sales (Expenses tab) to compute overhead.</div>`:""}
+      </div>`;
+
+      // channel toggle
+      html+=`<div class="card" style="margin-bottom:10px"><div class="fs-bar">
+        <label class="fs-btn"><input type="radio" name="mchan" ${MARGIN_CHAN==="consumer"?"checked":""} onchange="MARGIN_CHAN='consumer';render()"> Consumer margin</label>
+        <label class="fs-btn"><input type="radio" name="mchan" ${MARGIN_CHAN==="wholesale"?"checked":""} onchange="MARGIN_CHAN='wholesale';render()"> Wholesale margin</label>
+      </div></div>`;
+
+      const byCat={};
+      RECIPES.forEach(r=>{ (byCat[r.category||"Other"]||=[]).push(r); });
+      Object.keys(byCat).sort().forEach(cat=>{
+        html+=`<h2 class="section">${cat}</h2><div class="card"><div style="overflow-x:auto"><table class="rpt">
+          <tr><th>Item</th><th class="num">Price</th><th class="num">Ingred.</th><th class="num">Overhead</th><th class="num">Cost</th><th class="num">Profit</th><th class="num">Margin</th></tr>`;
+        byCat[cat].forEach(r=>{
+          const opts=OPTS[r.id]||[];
+          const ingCost=recipeCost(r.id);
+          const priced=opts.filter(o=>{
+            const pr = MARGIN_CHAN==="wholesale"?wholesaleOf(o):o.price;
+            return pr!=null;
+          });
+          if(!priced.length){
+            html+=`<tr><td>${r.name}</td><td class="num">—</td><td class="num">${ingCost?"$"+ingCost.toFixed(2):"—"}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
+            return;
+          }
+          priced.forEach((o,idx)=>{
+            const price = MARGIN_CHAN==="wholesale"?wholesaleOf(o):o.price;
+            const overhead = price*ohPct;           // this item's share of overhead
+            const cost = ingCost + overhead;         // cost to make (incl. overhead)
+            const profit = price - cost;
+            const margin = price>0 ? (profit/price*100) : null;
+            const label = idx===0 ? r.name : "";
+            const optLabel = o.option_name ? `<span class="stat-label"> · ${o.option_name}</span>` : "";
+            const mColor = margin==null ? "inherit" : margin>=50 ? "var(--sage)" : margin>=25 ? "var(--honey)" : "var(--berry)";
+            html+=`<tr>
+              <td>${label}${optLabel}</td>
+              <td class="num">$${Number(price).toFixed(2)}</td>
+              <td class="num">$${ingCost.toFixed(2)}</td>
+              <td class="num" style="color:#8a7d6d">$${overhead.toFixed(2)}</td>
+              <td class="num">$${cost.toFixed(2)}</td>
+              <td class="num" style="font-weight:600">$${profit.toFixed(2)}</td>
+              <td class="num" style="font-weight:700;color:${mColor}">${margin!=null?margin.toFixed(0)+"%":"—"}</td>
+            </tr>`;
+          });
+        });
+        html+=`</table></div></div>`;
+      });
+      return html;
+    }
+
     function sheetView(){
       let html = `<div class="card">
         <div class="stat-label" style="margin-bottom:8px">Pick items, choose a price type, then generate a clean sheet to print or save as PDF. Each size/option prints with its price.</div>
@@ -161,15 +273,22 @@
         html+=`<div class="card"><h3 style="font-family:'Fraunces',serif;margin:0 0 10px">${cat}</h3>`;
         byCat[cat].forEach(r=>{
           const opts=OPTS[r.id]||[];
-          const priceStr = opts.map(o=>{
+          const priced = opts.map(o=>{
             const pr = SHEET_PRICE==="wholesale" ? wholesaleOf(o) : o.price;
-            if(pr==null) return null;
-            return (o.option_name?o.option_name+" ":"")+"$"+Number(pr).toFixed(2);
-          }).filter(Boolean).join(" · ");
-          html+=`<label class="mini-item" style="cursor:pointer">
-            <input type="checkbox" ${SHEET_SEL.has(r.id)?"checked":""} onchange="toggleSheet(${r.id})">
+            return pr==null?null:{name:o.option_name,pr};
+          }).filter(Boolean);
+          let priceBlock;
+          if(!priced.length){ priceBlock=`<span class="stat-label">— set price —</span>`; }
+          else if(priced.length===1 && !priced[0].name){ priceBlock=`<span class="stat-label">$${priced[0].pr.toFixed(2)}</span>`; }
+          else {
+            priceBlock=`<div style="text-align:right">${priced.map(o=>
+              `<div class="stat-label">${o.name?o.name+" · ":""}<b style="color:var(--crust)">$${o.pr.toFixed(2)}</b></div>`
+            ).join("")}</div>`;
+          }
+          html+=`<label class="mini-item" style="cursor:pointer;align-items:flex-start">
+            <input type="checkbox" ${SHEET_SEL.has(r.id)?"checked":""} onchange="toggleSheet(${r.id})" style="margin-top:3px">
             <span style="flex:1">${r.name}</span>
-            <span class="stat-label">${priceStr||"— set price —"}</span>
+            ${priceBlock}
           </label>`;
         });
         html+=`</div>`;
@@ -198,8 +317,11 @@
           if(priced.length===1 && !priced[0].name){
             rows+=`<tr><td>${r.name}</td><td class="price">$${priced[0].pr.toFixed(2)}</td></tr>`;
           } else {
-            const optsStr=priced.map(o=>`${o.name?o.name+" ":""}$${o.pr.toFixed(2)}`).join("  ·  ");
-            rows+=`<tr><td>${r.name}<div style="font-size:12px;color:#8a7d6d">${optsStr}</div></td><td class="price"></td></tr>`;
+            // product name as a sub-header row, then one row per option (vertical)
+            rows+=`<tr><td colspan="2" style="padding-bottom:2px;font-weight:600">${r.name}</td></tr>`;
+            priced.forEach(o=>{
+              rows+=`<tr><td style="padding-left:22px;color:#5a4a3a">${o.name||""}</td><td class="price">$${o.pr.toFixed(2)}</td></tr>`;
+            });
           }
         });
       });
@@ -224,7 +346,10 @@
       </style></head><body>
         <div class="head">
           <img src="${location.origin}${location.pathname.replace(/[^/]*$/,'')}logo.svg" alt="ABAP Bakery" onerror="this.style.display='none'">
-          <div><h1>ABAP Bakery</h1><div style="font-size:14px;color:#8a7d6d">${title}</div></div>
+          <div><h1>${(COMPANY.dba_name||COMPANY.legal_name||"ABAP Bakery")}</h1>
+            <div style="font-size:14px;color:#8a7d6d">${title}</div>
+            ${(COMPANY.address||COMPANY.phone||COMPANY.website)?`<div style="font-size:12px;color:#a99;margin-top:2px">${[COMPANY.address,COMPANY.phone,COMPANY.website].filter(Boolean).join(" · ")}</div>`:""}
+          </div>
           <div class="meta">Effective ${today}<br>Prices subject to change</div>
         </div>
         <table>${rows}</table>
@@ -232,6 +357,137 @@
         <div class="noprint"><button onclick="window.print()">Print / Save as PDF</button></div>
       </body></html>`);
       w.document.close();
+    }
+
+    // ---------- Expenses view ----------
+    function expensesView(){
+      const oh=monthlyOverhead();
+      let html=`<div class="card"><div class="stat-label">
+        Add your inventory-related overhead (utilities, rent, insurance, supplies). Mark each as
+        monthly, yearly, or one-time — the app converts everything to a monthly figure. Then enter
+        your total sales each month; overhead % = overhead ÷ sales.</div></div>`;
+
+      // Add expense
+      html+=`<div class="card" style="margin-bottom:10px">
+        <h3 style="font-family:'Fraunces',serif;margin:0 0 8px">Add an expense</h3>
+        <div class="fs-bar">
+          <input type="text" id="exName" placeholder="e.g. Electric bill" style="flex:2;min-width:140px">
+          <span style="color:#a99">$</span><input type="number" step="0.01" id="exAmt" placeholder="0.00" style="width:90px">
+          <select id="exPeriod" style="padding:8px;border-radius:8px;border:1px solid var(--line)">
+            <option value="monthly">per month</option>
+            <option value="yearly">per year</option>
+            <option value="one-time">one-time</option>
+          </select>
+          <button class="mini" onclick="addExpense()">Add</button>
+        </div>
+      </div>`;
+
+      // Expense list
+      if(EXPENSES.length){
+        html+=`<div class="card" style="margin-bottom:10px"><table class="rpt">
+          <tr><th>Expense</th><th class="num">Amount</th><th>Period</th><th class="num">Monthly</th><th></th></tr>`;
+        EXPENSES.forEach(e=>{
+          const m = e.period==="monthly"?Number(e.amount):e.period==="yearly"?Number(e.amount)/12:Number(e.amount)/12;
+          html+=`<tr>
+            <td>${e.name}</td>
+            <td class="num">$${Number(e.amount).toFixed(2)}</td>
+            <td>${e.period}</td>
+            <td class="num" style="color:var(--crust);font-weight:600">$${m.toFixed(2)}</td>
+            <td><button class="mini secondary" style="padding:3px 8px" onclick="delExpense(${e.id})">✕</button></td>
+          </tr>`;
+        });
+        html+=`<tr><td colspan="3" style="text-align:right;font-weight:700">Total monthly overhead</td>
+          <td class="num" style="font-weight:800;color:var(--crust)">$${oh.toFixed(2)}</td><td></td></tr>`;
+        html+=`</table></div>`;
+      } else {
+        html+=`<div class="card" style="margin-bottom:10px"><div class="empty">No expenses yet.</div></div>`;
+      }
+
+      // Monthly sales entry
+      const thisMonth = new Date().toISOString().slice(0,7);
+      const existing = SALES.find(s=>s.month_key===thisMonth);
+      html+=`<h2 class="section">Monthly sales</h2>
+        <div class="card" style="margin-bottom:10px">
+          <div class="stat-label" style="margin-bottom:8px">Enter total sales for a month. More months = steadier overhead %.</div>
+          <div class="fs-bar">
+            <input type="month" id="salMonth" value="${thisMonth}" style="padding:8px;border-radius:8px;border:1px solid var(--line)">
+            <span style="color:#a99">$</span><input type="number" step="0.01" id="salAmt" placeholder="total sales" value="${existing?existing.amount:""}" style="width:120px">
+            <button class="mini" onclick="saveSales()">Save month</button>
+          </div>`;
+      if(SALES.length){
+        html+=`<table class="rpt" style="margin-top:10px"><tr><th>Month</th><th class="num">Sales</th><th class="num">Overhead %</th><th></th></tr>`;
+        SALES.slice().sort((a,b)=>b.month_key.localeCompare(a.month_key)).forEach(s=>{
+          const pct = (Number(s.amount)>0)?(oh/Number(s.amount)*100):null;
+          html+=`<tr><td>${s.month_key}</td><td class="num">$${Number(s.amount).toFixed(2)}</td>
+            <td class="num">${pct!=null?pct.toFixed(1)+"%":"—"}</td>
+            <td><button class="mini secondary" style="padding:3px 8px" onclick="delSales('${s.month_key}')">✕</button></td></tr>`;
+        });
+        html+=`</table>`;
+      }
+      html+=`</div>`;
+      return html;
+    }
+
+    async function addExpense(){
+      const name=(document.getElementById("exName").value||"").trim();
+      const amount=Number(document.getElementById("exAmt").value);
+      const period=document.getElementById("exPeriod").value;
+      if(!name||!amount){ alert("Enter a name and amount."); return; }
+      const { data, error } = await sb.from("expenses").insert({name,amount,period}).select().single();
+      if(error){ alert(error.message); return; }
+      EXPENSES.push(data); render();
+    }
+    async function delExpense(id){
+      EXPENSES=EXPENSES.filter(e=>e.id!==id);
+      await sb.from("expenses").update({active:false}).eq("id",id);
+      render();
+    }
+    async function saveSales(){
+      const month_key=document.getElementById("salMonth").value;
+      const amount=Number(document.getElementById("salAmt").value);
+      if(!month_key||!amount){ alert("Pick a month and enter sales."); return; }
+      const { error } = await sb.from("monthly_sales").upsert({month_key,amount,updated_at:new Date().toISOString()},{onConflict:"month_key"});
+      if(error){ alert(error.message); return; }
+      const ex=SALES.find(s=>s.month_key===month_key);
+      if(ex) ex.amount=amount; else SALES.push({month_key,amount});
+      render();
+    }
+    async function delSales(mk){
+      SALES=SALES.filter(s=>s.month_key!==mk);
+      await sb.from("monthly_sales").delete().eq("month_key",mk);
+      render();
+    }
+
+    // ---------- Company view ----------
+    function companyView(){
+      const c=COMPANY||{};
+      const f=(label,key,ph)=>`<div class="field" style="margin-bottom:10px">
+        <label class="stat-label">${label}</label>
+        <input type="text" id="co_${key}" value="${(c[key]||"").replace(/"/g,"&quot;")}" placeholder="${ph||""}" style="width:100%">
+      </div>`;
+      return `<div class="card"><div class="stat-label" style="margin-bottom:10px">
+        Standard business information. This also appears on your printed price sheets.</div>
+        ${f("Legal name","legal_name","A Bushel & A Peck Bakery LLC")}
+        ${f("DBA / display name","dba_name","ABAP Bakery")}
+        ${f("Address","address","123 Main St, City, ST 00000")}
+        ${f("Phone","phone","(555) 555-5555")}
+        ${f("Email","email","hello@abapbakery.com")}
+        ${f("Website","website","abapbakery.com")}
+        ${f("Tax ID / EIN","tax_id","")}
+        <div class="field" style="margin-bottom:10px"><label class="stat-label">Other notes</label>
+          <textarea id="co_extra" style="width:100%;min-height:70px;border:1px solid var(--line);border-radius:8px;padding:8px">${(c.extra||"").replace(/</g,"&lt;")}</textarea></div>
+        <button class="mini" onclick="saveCompany()">Save company info</button>
+      </div>`;
+    }
+    async function saveCompany(){
+      const g=k=>{ const el=document.getElementById("co_"+k); return el?el.value.trim()||null:null; };
+      const row={ id:1, legal_name:g("legal_name"), dba_name:g("dba_name"), address:g("address"),
+        phone:g("phone"), email:g("email"), website:g("website"), tax_id:g("tax_id"),
+        extra:g("extra"), updated_at:new Date().toISOString() };
+      const { error } = await sb.from("company_info").upsert(row,{onConflict:"id"});
+      if(error){ alert(error.message); return; }
+      COMPANY=row;
+      alert("Saved.");
     }
   </script>
 </body>
