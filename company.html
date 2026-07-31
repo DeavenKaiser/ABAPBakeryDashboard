@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Company</title>
+  <link rel="stylesheet" href="style.css?v=1785529387">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1785529387"></script>
+  <script src="nav.js?v=1785529387"></script>
+  <script>
+    let IS_ADMIN=false, COMPANY={id:1};
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Company", prof);
+      renderNav("company", IS_ADMIN);
+      if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
+      const { data } = await sb.from("company_info").select("*").eq("id",1).maybeSingle();
+      COMPANY = data || {id:1};
+      render();
+    })();
+
+    function render(){
+      const c=COMPANY||{};
+      const f=(label,key,ph)=>`<div class="field" style="margin-bottom:10px">
+        <label class="stat-label">${label}</label>
+        <input type="text" id="co_${key}" value="${(c[key]||"").replace(/"/g,"&quot;")}" placeholder="${ph||""}" style="width:100%">
+      </div>`;
+      document.getElementById("app").innerHTML=`
+        <div class="hero" style="padding:18px 22px"><div>
+          <h1 style="font-size:22px">Company</h1>
+          <div class="sub">Business information — also prints on your price sheets</div></div></div>
+        <div class="card">
+          ${f("Legal name","legal_name","A Bushel & A Peck Bakery LLC")}
+          ${f("DBA / display name","dba_name","ABAP Bakery")}
+          ${f("Address","address","123 Main St, City, ST 00000")}
+          ${f("Phone","phone","(555) 555-5555")}
+          ${f("Email","email","hello@abapbakery.com")}
+          ${f("Website","website","abapbakery.com")}
+          ${f("Tax ID / EIN","tax_id","")}
+          <div class="field" style="margin-bottom:10px"><label class="stat-label">Other notes</label>
+            <textarea id="co_extra" style="width:100%;min-height:70px;border:1px solid var(--line);border-radius:8px;padding:8px">${(c.extra||"").replace(/</g,"&lt;")}</textarea></div>
+          <button class="mini" onclick="saveCompany()">Save company info</button>
+        </div>`;
+    }
+    async function saveCompany(){
+      const g=k=>{ const el=document.getElementById("co_"+k); return el?el.value.trim()||null:null; };
+      const row={ id:1, legal_name:g("legal_name"), dba_name:g("dba_name"), address:g("address"),
+        phone:g("phone"), email:g("email"), website:g("website"), tax_id:g("tax_id"),
+        extra:g("extra"), updated_at:new Date().toISOString() };
+      const { error } = await sb.from("company_info").upsert(row,{onConflict:"id"});
+      if(error){ alert(error.message); return; }
+      COMPANY=row; alert("Saved.");
+    }
+  </script>
+</body>
+</html>

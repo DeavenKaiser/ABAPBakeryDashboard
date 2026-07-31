@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Expenses</title>
+  <link rel="stylesheet" href="style.css?v=1785529387">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading…</div></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1785529387"></script>
+  <script src="nav.js?v=1785529387"></script>
+  <script>
+    let IS_ADMIN=false, EXPENSES=[], SALES=[];
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      IS_ADMIN = prof && prof.role==="admin";
+      await renderTopbar("Expenses", prof);
+      renderNav("expenses", IS_ADMIN);
+      if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
+      await load();
+    })();
+
+    async function load(){
+      const [{data:exp},{data:sales}] = await Promise.all([
+        sb.from("expenses").select("*").eq("active",true).order("created_at"),
+        sb.from("monthly_sales").select("*").order("month_key"),
+      ]);
+      EXPENSES = exp||[]; SALES = sales||[];
+      render();
+    }
+    function monthlyOverhead(){
+      return EXPENSES.reduce((s,e)=>{
+        const a=Number(e.amount)||0;
+        if(e.period==="monthly") return s+a;
+        if(e.period==="yearly") return s+a/12;
+        if(e.period==="one-time") return s+a/12;
+        return s;
+      },0);
+    }
+
+    function render(){
+      const app=document.getElementById("app");
+      const oh=monthlyOverhead();
+      let html=`<div class="hero" style="padding:18px 22px"><div>
+        <h1 style="font-size:22px">Expenses</h1>
+        <div class="sub">Overhead costs & monthly sales — feeds the overhead % in Pricing Manager → Margins</div></div></div>`;
+
+      html+=`<div class="card"><div class="stat-label">
+        Add inventory-related overhead (utilities, rent, insurance, supplies). Mark each as monthly,
+        yearly, or one-time — the app converts everything to a monthly figure. Then enter total sales
+        each month; overhead % = overhead ÷ sales.</div></div>`;
+
+      html+=`<div class="card" style="margin-bottom:10px">
+        <h3 style="font-family:'Fraunces',serif;margin:0 0 8px">Add an expense</h3>
+        <div class="fs-bar">
+          <input type="text" id="exName" placeholder="e.g. Electric bill" style="flex:2;min-width:140px">
+          <span style="color:#a99">$</span><input type="number" step="0.01" id="exAmt" placeholder="0.00" style="width:90px">
+          <select id="exPeriod" style="padding:8px;border-radius:8px;border:1px solid var(--line)">
+            <option value="monthly">per month</option>
+            <option value="yearly">per year</option>
+            <option value="one-time">one-time</option>
+          </select>
+          <button class="mini" onclick="addExpense()">Add</button>
+        </div>
+      </div>`;
+
+      if(EXPENSES.length){
+        html+=`<div class="card" style="margin-bottom:10px"><div style="overflow-x:auto"><table class="rpt">
+          <tr><th>Expense</th><th class="num">Amount</th><th>Period</th><th class="num">Monthly</th><th></th></tr>`;
+        EXPENSES.forEach(e=>{
+          const m = e.period==="monthly"?Number(e.amount):Number(e.amount)/12;
+          html+=`<tr><td>${e.name}</td><td class="num">$${Number(e.amount).toFixed(2)}</td>
+            <td>${e.period}</td><td class="num" style="color:var(--crust);font-weight:600">$${m.toFixed(2)}</td>
+            <td><button class="mini secondary" style="padding:3px 8px" onclick="delExpense(${e.id})">✕</button></td></tr>`;
+        });
+        html+=`<tr><td colspan="3" style="text-align:right;font-weight:700">Total monthly overhead</td>
+          <td class="num" style="font-weight:800;color:var(--crust)">$${oh.toFixed(2)}</td><td></td></tr>`;
+        html+=`</table></div></div>`;
+      } else {
+        html+=`<div class="card" style="margin-bottom:10px"><div class="empty">No expenses yet.</div></div>`;
+      }
+
+      const thisMonth = new Date().toISOString().slice(0,7);
+      const existing = SALES.find(s=>s.month_key===thisMonth);
+      html+=`<h2 class="section">Monthly sales</h2>
+        <div class="card" style="margin-bottom:10px">
+          <div class="stat-label" style="margin-bottom:8px">Enter total sales for a month. More months = steadier overhead %.</div>
+          <div class="fs-bar">
+            <input type="month" id="salMonth" value="${thisMonth}" style="padding:8px;border-radius:8px;border:1px solid var(--line)">
+            <span style="color:#a99">$</span><input type="number" step="0.01" id="salAmt" placeholder="total sales" value="${existing?existing.amount:""}" style="width:120px">
+            <button class="mini" onclick="saveSales()">Save month</button>
+          </div>`;
+      if(SALES.length){
+        html+=`<div style="overflow-x:auto"><table class="rpt" style="margin-top:10px"><tr><th>Month</th><th class="num">Sales</th><th class="num">Overhead %</th><th></th></tr>`;
+        SALES.slice().sort((a,b)=>b.month_key.localeCompare(a.month_key)).forEach(s=>{
+          const pct=(Number(s.amount)>0)?(oh/Number(s.amount)*100):null;
+          html+=`<tr><td>${s.month_key}</td><td class="num">$${Number(s.amount).toFixed(2)}</td>
+            <td class="num">${pct!=null?pct.toFixed(1)+"%":"—"}</td>
+            <td><button class="mini secondary" style="padding:3px 8px" onclick="delSales('${s.month_key}')">✕</button></td></tr>`;
+        });
+        html+=`</table></div>`;
+      }
+      html+=`</div>`;
+      app.innerHTML=html;
+    }
+
+    async function addExpense(){
+      const name=(document.getElementById("exName").value||"").trim();
+      const amount=Number(document.getElementById("exAmt").value);
+      const period=document.getElementById("exPeriod").value;
+      if(!name||!amount){ alert("Enter a name and amount."); return; }
+      const { data, error } = await sb.from("expenses").insert({name,amount,period}).select().single();
+      if(error){ alert(error.message); return; }
+      EXPENSES.push(data); render();
+    }
+    async function delExpense(id){
+      EXPENSES=EXPENSES.filter(e=>e.id!==id);
+      await sb.from("expenses").update({active:false}).eq("id",id);
+      render();
+    }
+    async function saveSales(){
+      const month_key=document.getElementById("salMonth").value;
+      const amount=Number(document.getElementById("salAmt").value);
+      if(!month_key||!amount){ alert("Pick a month and enter sales."); return; }
+      const { error } = await sb.from("monthly_sales").upsert({month_key,amount,updated_at:new Date().toISOString()},{onConflict:"month_key"});
+      if(error){ alert(error.message); return; }
+      const ex=SALES.find(s=>s.month_key===month_key);
+      if(ex) ex.amount=amount; else SALES.push({month_key,amount});
+      render();
+    }
+    async function delSales(mk){
+      SALES=SALES.filter(s=>s.month_key!==mk);
+      await sb.from("monthly_sales").delete().eq("month_key",mk);
+      render();
+    }
+  </script>
+</body>
+</html>
