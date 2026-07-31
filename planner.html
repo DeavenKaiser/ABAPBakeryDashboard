@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Prep Planner</title>
-  <link rel="stylesheet" href="style.css?v=1785457116">
+  <link rel="stylesheet" href="style.css?v=1785517594">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading Prep Planner…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1785457116"></script>
-  <script src="nav.js?v=1785457116"></script>
+  <script src="config.js?v=1785517594"></script>
+  <script src="nav.js?v=1785517594"></script>
   <script>
     let IS_ADMIN=false, TAB="calendar", PRICING=[], SETTINGS=[];
     let PLAN=[], RECIPES=[], CAL_MONTH=null, PROJECTION=null;
@@ -60,11 +60,9 @@
         ${tabBtn("list","List")}
         ${tabBtn("projection","Projection")}
         ${tabBtn("pricing","Pricing")}
-        ${tabBtn("sheet","Wholesale Sheet")}
       </div></div>`;
 
       if(TAB==="pricing") html+=pricingView();
-      else if(TAB==="sheet") html+=sheetView();
       else if(TAB==="calendar") html+=calendarView();
       else if(TAB==="list") html+=listView();
       else if(TAB==="projection") html+=projectionView();
@@ -118,92 +116,6 @@
       await loadPricing();
       render();
     }
-
-    // ---------- Wholesale / pricing sheet builder ----------
-    let SHEET_SEL = new Set();      // selected recipe ids
-    let SHEET_PRICE = "wholesale";  // wholesale | retail
-    function sheetView(){
-      if(!SHEET_SEL.size && PRICING.length){ /* start empty; user picks */ }
-      let html = `<div class="card">
-        <div class="stat-label" style="margin-bottom:8px">Pick the items to include, choose a price type, then generate a clean sheet you can print or save as PDF for customers.</div>
-        <div class="fs-bar" style="margin-bottom:10px">
-          <label class="fs-btn"><input type="radio" name="ptype" ${SHEET_PRICE==="wholesale"?"checked":""} onchange="SHEET_PRICE='wholesale';render()"> Wholesale prices</label>
-          <label class="fs-btn"><input type="radio" name="ptype" ${SHEET_PRICE==="retail"?"checked":""} onchange="SHEET_PRICE='retail';render()"> Retail prices</label>
-          <button class="fs-btn" onclick="sheetSelectAll(true)">Select all</button>
-          <button class="fs-btn" onclick="sheetSelectAll(false)">Clear</button>
-          <button class="mini" onclick="generateSheet()" ${SHEET_SEL.size?"":"disabled style=opacity:.5"}>Generate sheet (${SHEET_SEL.size})</button>
-        </div>
-      </div>`;
-
-      const byCat={};
-      PRICING.forEach(p=>{ (byCat[p.category||"Other"]||=[]).push(p); });
-      Object.keys(byCat).sort().forEach(cat=>{
-        html+=`<div class="card"><h3 style="font-family:'Fraunces',serif;margin:0 0 10px">${cat}</h3>`;
-        byCat[cat].sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
-          const price = SHEET_PRICE==="wholesale" ? p.suggested_wholesale : p.suggested_retail;
-          html+=`<label class="mini-item" style="cursor:pointer">
-            <input type="checkbox" ${SHEET_SEL.has(p.id)?"checked":""} onchange="toggleSheet(${p.id})">
-            <span style="flex:1">${p.name}</span>
-            <span class="stat-label">${price!=null?"$"+Number(price).toFixed(2):"— set price —"}</span>
-          </label>`;
-        });
-        html+=`</div>`;
-      });
-      return html;
-    }
-    function toggleSheet(id){ if(SHEET_SEL.has(id)) SHEET_SEL.delete(id); else SHEET_SEL.add(id); render(); }
-    function sheetSelectAll(on){ SHEET_SEL = on ? new Set(PRICING.map(p=>p.id)) : new Set(); render(); }
-
-    function generateSheet(){
-      const items = PRICING.filter(p=>SHEET_SEL.has(p.id))
-        .sort((a,b)=>(a.category||"").localeCompare(b.category||"")||a.name.localeCompare(b.name));
-      const priceOf = p => SHEET_PRICE==="wholesale" ? p.suggested_wholesale : p.suggested_retail;
-      const today = new Date().toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
-      const title = SHEET_PRICE==="wholesale" ? "Wholesale Price Sheet" : "Price Sheet";
-
-      // group rows by category
-      const byCat={};
-      items.forEach(p=>{ (byCat[p.category||"Other"]||=[]).push(p); });
-      let rows="";
-      Object.keys(byCat).sort().forEach(cat=>{
-        rows+=`<tr class="cat"><td colspan="2">${cat}</td></tr>`;
-        byCat[cat].forEach(p=>{
-          const pr=priceOf(p);
-          rows+=`<tr><td>${p.name}</td><td class="price">${pr!=null?"$"+Number(pr).toFixed(2):"—"}</td></tr>`;
-        });
-      });
-
-      const w = window.open("", "_blank");
-      w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;900&family=Inter:wght@400;600&display=swap');
-        * { box-sizing:border-box; }
-        body { font-family:'Inter',sans-serif; color:#3D2E23; margin:0; padding:40px; }
-        .head { display:flex; align-items:center; gap:18px; border-bottom:3px solid #6B4F3A; padding-bottom:18px; margin-bottom:24px; }
-        .head img { width:76px; height:76px; }
-        .head h1 { font-family:'Fraunces',serif; font-size:30px; margin:0; color:#6B4F3A; }
-        .head .meta { margin-left:auto; text-align:right; font-size:13px; color:#8a7d6d; }
-        table { width:100%; border-collapse:collapse; }
-        td { padding:9px 8px; border-bottom:1px solid #EADFCB; font-size:15px; }
-        tr.cat td { font-family:'Fraunces',serif; font-weight:600; font-size:17px; color:#7F9B6E; border-bottom:2px solid #7F9B6E; padding-top:18px; }
-        td.price { text-align:right; font-weight:700; white-space:nowrap; }
-        .foot { margin-top:28px; font-size:12px; color:#a99; text-align:center; }
-        @media print { body { padding:20px; } .noprint { display:none; } }
-        .noprint { text-align:center; margin-top:24px; }
-        .noprint button { background:#6B4F3A; color:#fff; border:none; padding:10px 20px; border-radius:8px; font-size:14px; cursor:pointer; }
-      </style></head><body>
-        <div class="head">
-          <img src="${location.origin}${location.pathname.replace(/[^/]*$/,'')}logo.svg" alt="ABAP Bakery" onerror="this.style.display='none'">
-          <div><h1>ABAP Bakery</h1><div style="font-size:14px;color:#8a7d6d">${title}</div></div>
-          <div class="meta">Effective ${today}<br>Prices subject to change</div>
-        </div>
-        <table>${rows}</table>
-        <div class="foot">ABAP Bakery · Thank you for your business</div>
-        <div class="noprint"><button onclick="window.print()">Print / Save as PDF</button></div>
-      </body></html>`);
-      w.document.close();
-    }
-
 
     // ---------- Calendar view ----------
     function ymd(d){ return d.toISOString().slice(0,10); }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Shopping List</title>
-  <link rel="stylesheet" href="style.css?v=1785457116">
+  <link rel="stylesheet" href="style.css?v=1785517594">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,10 +12,10 @@
   <div class="wrap" id="app"><div class="empty">Loading shopping list…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1785457116"></script>
-  <script src="nav.js?v=1785457116"></script>
+  <script src="config.js?v=1785517594"></script>
+  <script src="nav.js?v=1785517594"></script>
   <script>
-    let IS_ADMIN=false, ITEMS=[], ORDERS={}, FILTER="all";
+    let IS_ADMIN=false, ITEMS=[], ORDERS={}, FILTER="all", SORTBY="smart";
 
     (async () => {
       if (!(await requireLogin())) return;
@@ -68,13 +68,23 @@
           ${needsN} item${needsN===1?"":"s"} ${needsN===1?"was":"were"} counted but ${needsN===1?"is":"are"} still below threshold — ${needsN===1?"it":"they"} may need reordering.</div>`;
       }
 
-      // filter buttons (inventory-style)
-      html+=`<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px;flex-wrap:wrap">
+      // filter buttons + sort dropdown
+      const sortLabels={smart:"Smart (default)",amount:"Lowest amount",name:"Name A–Z",role:"By role"};
+      html+=`<div class="card" style="margin-bottom:14px"><div class="fs-bar" style="margin-bottom:8px">
         ${fb("all","All ("+total+")")}
         ${fb("below","Below ("+ITEMS.filter(isBelow).length+")")}
         ${fb("extra","Order Extra ("+ITEMS.filter(i=>i.order_extra).length+")")}
         ${fb("ordered","Ordered ("+orderedN+")")}
         ${needsN?fb("needs","Needs reorder ("+needsN+")"):""}
+      </div>
+      <div class="fs-drop">
+        <button class="fs-btn" onclick="fsToggle(this)">Sort: ${sortLabels[SORTBY]} <span class="chev">▼</span></button>
+        <div class="fs-menu">
+          <label class="fs-opt ${SORTBY==="smart"?"selected":""}"><input type="radio" name="ssort" ${SORTBY==="smart"?"checked":""} onchange="setSort('smart')"> Smart (to-order first, then lowest, then A–Z)</label>
+          <label class="fs-opt ${SORTBY==="amount"?"selected":""}"><input type="radio" name="ssort" ${SORTBY==="amount"?"checked":""} onchange="setSort('amount')"> Lowest amount first</label>
+          <label class="fs-opt ${SORTBY==="name"?"selected":""}"><input type="radio" name="ssort" ${SORTBY==="name"?"checked":""} onchange="setSort('name')"> Name A–Z</label>
+          <label class="fs-opt ${SORTBY==="role"?"selected":""}"><input type="radio" name="ssort" ${SORTBY==="role"?"checked":""} onchange="setSort('role')"> Grouped by role</label>
+        </div>
       </div></div>`;
 
       if(!list.length){
@@ -82,17 +92,13 @@
         app.innerHTML=html; return;
       }
 
-      // group by owner
-      const groups={};
-      list.forEach(it=>{ (groups[it.owner]||=[]).push(it); });
-      Object.keys(groups).sort().forEach(owner=>{
-        html+=`<h2 class="section">${roleLabel(owner)}</h2><div class="card">`;
-        groups[owner].forEach(it=>{
-          const ord=ORDERS[it.id];
-          const isOpen=ord&&ord.status==="open";
-          const needs=ord&&ord.status==="needs_reorder";
-          const dateStr=ord?new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"";
-          html+=`<div class="mini-item" style="align-items:flex-start;padding:10px 0">
+      // Helper to render one item row
+      const rowHtml = it => {
+        const ord=ORDERS[it.id];
+        const isOpen=ord&&ord.status==="open";
+        const needs=ord&&ord.status==="needs_reorder";
+        const dateStr=ord?new Date(ord.ordered_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"";
+        return `<div class="mini-item" style="align-items:flex-start;padding:10px 0">
             <span class="dot-tag" style="background:${isBelow(it)?'var(--berry)':'var(--honey)'};margin-top:6px"></span>
             <div style="flex:1">
               <span style="font-size:15px;${isOpen?'text-decoration:line-through;color:#aaa':''}">${it.name}</span>
@@ -103,13 +109,47 @@
               ? `<button class="mini secondary" style="padding:6px 12px" onclick="unorderItem(${it.id})">Undo</button>`
               : `<button class="mini" style="padding:6px 12px" onclick="orderItem(${it.id})">Ordered</button>`}
           </div>`;
+      };
+
+      if(SORTBY==="role"){
+        // grouped by owner (role)
+        const groups={};
+        list.forEach(it=>{ (groups[it.owner]||=[]).push(it); });
+        Object.keys(groups).sort().forEach(owner=>{
+          groups[owner].sort((a,b)=>a.name.localeCompare(b.name));
+          html+=`<h2 class="section">${roleLabel(owner)}</h2><div class="card">`;
+          groups[owner].forEach(it=>{ html+=rowHtml(it); });
+          html+=`</div>`;
         });
+      } else {
+        // flat sorted list
+        const isOpenOrder = it => ORDERS[it.id] && ORDERS[it.id].status==="open";
+        const amt = it => (it.current_on_hand==null ? Infinity : Number(it.current_on_hand));
+        list.sort((a,b)=>{
+          if(SORTBY==="smart"){
+            // 1) not-ordered before ordered
+            const ao=isOpenOrder(a)?1:0, bo=isOpenOrder(b)?1:0;
+            if(ao!==bo) return ao-bo;
+            // 2) lowest amount on hand first
+            if(amt(a)!==amt(b)) return amt(a)-amt(b);
+            // 3) alphabetical
+            return a.name.localeCompare(b.name);
+          }
+          if(SORTBY==="amount"){
+            if(amt(a)!==amt(b)) return amt(a)-amt(b);
+            return a.name.localeCompare(b.name);
+          }
+          return a.name.localeCompare(b.name); // name
+        });
+        html+=`<div class="card">`;
+        list.forEach(it=>{ html+=rowHtml(it); });
         html+=`</div>`;
-      });
+      }
 
       app.innerHTML=html;
     }
     function fb(id,label){ return `<button class="${FILTER===id?"":"secondary"}" onclick="FILTER='${id}';render()">${label}</button>`; }
+    function setSort(s){ SORTBY=s; render(); }
 
     // fast, optimistic order actions
     async function orderItem(itemId){
