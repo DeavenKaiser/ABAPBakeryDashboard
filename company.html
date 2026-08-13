@@ -32,7 +32,7 @@
       const c=COMPANY||{};
       const f=(label,key,ph)=>`<div class="field" style="margin-bottom:10px">
         <label class="stat-label">${label}</label>
-        <input type="text" id="co_${key}" value="${(c[key]||"").replace(/"/g,"&quot;")}" placeholder="${ph||""}" style="width:100%">
+        <input type="text" id="co_${attr(key)}" value="${attr(c[key])}" placeholder="${attr(ph)}" style="width:100%">
       </div>`;
       document.getElementById("app").innerHTML=`
         <div class="hero" style="padding:18px 22px"><div>
@@ -47,10 +47,15 @@
           ${f("Website","website","abapbakery.com")}
           ${f("Tax ID / EIN","tax_id","")}
           <div class="field" style="margin-bottom:10px"><label class="stat-label">Other notes</label>
-            <textarea id="co_extra" style="width:100%;min-height:70px;border:1px solid var(--line);border-radius:8px;padding:8px">${(c.extra||"").replace(/</g,"&lt;")}</textarea></div>
-          <button class="mini" onclick="saveCompany()">Save company info</button>
+            <textarea id="co_extra" style="width:100%;min-height:70px;border:1px solid var(--line);border-radius:8px;padding:8px">${esc(c.extra)}</textarea></div>
+          <button class="mini" data-action="save-company">Save company info</button>
         </div>`;
     }
+    // Reference implementation of the delegation helper in config.js.
+    // Registered once at load; survives every re-render of the form because
+    // the listener lives on document, not on the button.
+    onAction("save-company", () => saveCompany());
+
     async function saveCompany(){
       const g=k=>{ const el=document.getElementById("co_"+k); return el?el.value.trim()||null:null; };
       const row={ id:1, legal_name:g("legal_name"), dba_name:g("dba_name"), address:g("address"),

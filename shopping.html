@@ -101,7 +101,7 @@
         return `<div class="mini-item" style="align-items:flex-start;padding:10px 0">
             <span class="dot-tag" style="background:${isBelow(it)?'var(--berry)':'var(--honey)'};margin-top:6px"></span>
             <div style="flex:1">
-              <span style="font-size:15px;${isOpen?'text-decoration:line-through;color:#aaa':''}">${it.name}</span>
+              <span style="font-size:15px;${isOpen?'text-decoration:line-through;color:#aaa':''}">${esc(it.name)}</span>
               <div class="stat-label">${isBelow(it)?"below threshold":"order extra"}${it.current_on_hand!=null?" · have "+it.current_on_hand:""}${it.threshold!=null?" / need "+it.threshold:""}${isOpen?" · ordered "+dateStr:""}</div>
               ${needs?`<div class="stat-label" style="color:var(--berry);font-weight:700">Counted but still below — needs reordering</div>`:""}
             </div>
@@ -117,7 +117,7 @@
         list.forEach(it=>{ (groups[it.owner]||=[]).push(it); });
         Object.keys(groups).sort().forEach(owner=>{
           groups[owner].sort((a,b)=>a.name.localeCompare(b.name));
-          html+=`<h2 class="section">${roleLabel(owner)}</h2><div class="card">`;
+          html+=`<h2 class="section">${esc(roleLabel(owner))}</h2><div class="card">`;
           groups[owner].forEach(it=>{ html+=rowHtml(it); });
           html+=`</div>`;
         });

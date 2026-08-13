@@ -21,7 +21,7 @@
       const prof = await getMyProfile();
       IS_ADMIN = prof && prof.role==="admin";
       await renderTopbar("Units", prof);
-      renderNav("inventory", IS_ADMIN);
+      renderNav("units", IS_ADMIN);
       if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
       await load();
     })();
@@ -72,7 +72,7 @@
       const byOwner={};
       ITEMS.forEach(i=>{ (byOwner[i.owner||"shared"]||=[]).push(i); });
       Object.keys(byOwner).sort().forEach(o=>{
-        html+=`<h2 class="section">${roleLabel(o)}</h2>`;
+        html+=`<h2 class="section">${esc(roleLabel(o))}</h2>`;
         byOwner[o].forEach(i=>{ html+=itemRow(i,false); });
       });
       return html;
@@ -81,22 +81,25 @@
     function itemRow(i, highlight){
       const pu=i.pack_unit||"", ps=i.pack_size??"", bu=i.base_unit||"";
       const isPack = pu ? (unitByCode(pu)||{}).is_pack : false;
+      // NOTE: the fallback branch is intentional HTML, so `summary` is inserted
+      // raw below. Everything interpolated into the other branch must therefore
+      // be escaped HERE — unit codes come from the admin-editable units table.
       const summary = (!i.units_need_review && i.base_unit)
-        ? (isPack ? `1 ${pu} = ${i.pack_size} ${i.base_unit}` : `measured in ${i.base_unit}`)
+        ? (isPack ? `1 ${esc(pu)} = ${Number(i.pack_size)} ${esc(i.base_unit)}` : `measured in ${esc(i.base_unit)}`)
         : `<span style="color:var(--berry);font-weight:700">needs a real unit</span>`;
       return `<div class="card" style="margin-bottom:8px;${highlight?'border-left:3px solid var(--berry)':''}">
         <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;align-items:baseline">
-          <strong>${i.name}</strong><span class="stat-label">${summary}</span>
+          <strong>${esc(i.name)}</strong><span class="stat-label">${summary}</span>
         </div>
         <div class="fs-bar" style="margin-top:8px">
           <label class="stat-label">Bought as
             <select id="pu_${i.id}" onchange="onPackChange(${i.id})">
               <option value="">—</option>
               <optgroup label="Containers (need a size)">
-                ${packUnits().map(u=>`<option value="${u.code}" ${pu===u.code?"selected":""}>${u.label}</option>`).join("")}
+                ${packUnits().map(u=>`<option value="${attr(u.code)}" ${pu===u.code?"selected":""}>${esc(u.label)}</option>`).join("")}
               </optgroup>
               <optgroup label="Measured directly">
-                ${baseUnits().map(u=>`<option value="${u.code}" ${pu===u.code?"selected":""}>${u.label} (${u.code})</option>`).join("")}
+                ${baseUnits().map(u=>`<option value="${attr(u.code)}" ${pu===u.code?"selected":""}>${esc(u.label)} (${esc(u.code)})</option>`).join("")}
               </optgroup>
             </select></label>
           <span id="packbits_${i.id}" style="display:${isPack?"inline-flex":"none"};gap:6px;align-items:center">
@@ -104,7 +107,7 @@
               <input type="number" step="0.01" id="ps_${i.id}" value="${ps}" class="in-money" placeholder="qty"></label>
             <select id="bu_${i.id}">
               <option value="">—</option>
-              ${baseUnits().map(u=>`<option value="${u.code}" ${bu===u.code?"selected":""}>${u.code}</option>`).join("")}
+              ${baseUnits().map(u=>`<option value="${attr(u.code)}" ${bu===u.code?"selected":""}>${esc(u.code)}</option>`).join("")}
             </select>
           </span>
           <button class="mini" onclick="saveUnits(${i.id})">Save</button>
@@ -153,9 +156,9 @@
           <tr><th>Unit</th><th>Code</th><th class="num">${kind==="pack"?"":"= base"}</th><th></th></tr>`;
         list.forEach(u=>{
           const base = kind==="weight"?"g":kind==="volume"?"ml":kind==="count"?"each":"";
-          html+=`<tr><td>${u.label}</td><td><code>${u.code}</code></td>
+          html+=`<tr><td>${esc(u.label)}</td><td><code>${esc(u.code)}</code></td>
             <td class="num">${u.is_pack?'<span class="stat-label">needs a size</span>':(u.to_base+" "+base)}</td>
-            <td><button class="mini secondary" style="padding:3px 8px" onclick="delUnit('${u.code}')">✕</button></td></tr>`;
+            <td><button class="mini secondary" style="padding:3px 8px" onclick="delUnit(${jsArg(u.code)})">✕</button></td></tr>`;
         });
         html+=`</table></div></div>`;
       });

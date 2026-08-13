@@ -60,7 +60,7 @@
         html += `<div class="card"><div class="error" style="min-height:auto">
           The Events feature isn't set up in the database yet.</div>
           <p class="muted">Run <strong>Phase14_Events.sql</strong> in Supabase (after Phase 13), then reload this page.</p>
-          <p class="stat-label">Details: ${LOAD_ERR.replace(/</g,"&lt;")}</p></div>`;
+          <p class="stat-label">Details: ${esc(LOAD_ERR)}</p></div>`;
         app.innerHTML = html;
         return;
       }
@@ -93,11 +93,15 @@
       return `<div class="wcard" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1">
-            <div style="font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso)">${e.title}</div>
-            <div class="stat-label">${dateLabel}${e.event_time?" · "+e.event_time:""}${e.location?" · "+e.location:""}</div>
-            ${e.description?`<div style="font-size:14px;margin-top:6px">${e.description.replace(/</g,"&lt;")}</div>`:""}
+            <!-- Every field below is written by whoever submitted the event: any
+                 signed-in staff member can INSERT into events and event_items.
+                 An admin then opens this page to approve it, which makes this the
+                 shortest path from staff input to script in an admin session. -->
+            <div style="font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso)">${esc(e.title)}</div>
+            <div class="stat-label">${dateLabel}${e.event_time?" · "+esc(e.event_time):""}${e.location?" · "+esc(e.location):""}</div>
+            ${e.description?`<div style="font-size:14px;margin-top:6px">${esc(e.description)}</div>`:""}
             ${items.length?`<div style="margin-top:8px"><div class="stat-label" style="font-weight:700">Needs:</div>
-              ${items.map(i=>`<div class="stat-label">• ${i.amount!=null?i.amount+" "+(i.unit||""):""} ${i.item_name}</div>`).join("")}</div>`:""}
+              ${items.map(i=>`<div class="stat-label">• ${i.amount!=null?Number(i.amount)+" "+esc(i.unit||""):""} ${esc(i.item_name)}</div>`).join("")}</div>`:""}
             ${e.status==="pending"?`<span class="pill" style="background:#fff3d6;color:#a07d2c;margin-top:6px;display:inline-block">pending approval</span>`:""}
           </div>
         </div>

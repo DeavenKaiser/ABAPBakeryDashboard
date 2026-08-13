@@ -108,7 +108,7 @@
           const opts=OPTS[r.id]||[];
           html+=`<div class="card" style="margin-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <h3 style="font-family:'Fraunces',serif;margin:0">${r.name}</h3>
+              <h3 style="font-family:'Fraunces',serif;margin:0">${esc(r.name)}</h3>
               <button class="mini secondary" style="padding:4px 10px" onclick="addOption(${r.id})">+ option</button>
             </div>`;
           if(!opts.length){
@@ -120,7 +120,7 @@
               const linked=o.linked!==false;
               const whole=wholesaleOf(o);
               html+=`<tr>
-                <td><input type="text" value="${(o.option_name||"").replace(/"/g,"&quot;")}" placeholder="(single price)"
+                <td><input type="text" value="${attr(o.option_name)}" placeholder="(single price)"
                     class="in-label" onchange="setOpt(${o.id},'option_name',this.value)"></td>
                 <td class="num"><span style="color:#a99">$</span><input type="number" step="0.01" value="${o.price??""}" placeholder="—"
                     class="in-money" onchange="setOpt(${o.id},'price',this.value)"></td>
@@ -224,7 +224,7 @@
             return pr!=null;
           });
           if(!priced.length){
-            html+=`<tr><td>${r.name}</td><td class="num">—</td><td class="num">${ingCost?"$"+ingCost.toFixed(2):"—"}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
+            html+=`<tr><td>${esc(r.name)}</td><td class="num">—</td><td class="num">${ingCost?"$"+ingCost.toFixed(2):"—"}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
             return;
           }
           priced.forEach((o,idx)=>{
@@ -234,7 +234,7 @@
             const profit = price - cost;
             const margin = price>0 ? (profit/price*100) : null;
             const label = idx===0 ? r.name : "";
-            const optLabel = o.option_name ? `<span class="stat-label"> · ${o.option_name}</span>` : "";
+            const optLabel = o.option_name ? `<span class="stat-label"> · ${esc(o.option_name)}</span>` : "";
             const mColor = margin==null ? "inherit" : margin>=50 ? "var(--sage)" : margin>=25 ? "var(--honey)" : "var(--berry)";
             html+=`<tr>
               <td>${label}${optLabel}</td>
@@ -278,12 +278,12 @@
           else if(priced.length===1 && !priced[0].name){ priceBlock=`<span class="stat-label">$${priced[0].pr.toFixed(2)}</span>`; }
           else {
             priceBlock=`<div style="text-align:right">${priced.map(o=>
-              `<div class="stat-label">${o.name?o.name+" · ":""}<b style="color:var(--crust)">$${o.pr.toFixed(2)}</b></div>`
+              `<div class="stat-label">${o.name?esc(o.name)+" · ":""}<b style="color:var(--crust)">$${o.pr.toFixed(2)}</b></div>`
             ).join("")}</div>`;
           }
           html+=`<label class="mini-item" style="cursor:pointer;align-items:flex-start">
             <input type="checkbox" ${SHEET_SEL.has(r.id)?"checked":""} onchange="toggleSheet(${r.id})" style="margin-top:3px">
-            <span style="flex:1">${r.name}</span>
+            <span style="flex:1">${esc(r.name)}</span>
             ${priceBlock}
           </label>`;
         });
@@ -309,14 +309,14 @@
             const pr=SHEET_PRICE==="wholesale"?wholesaleOf(o):o.price;
             return pr==null?null:{name:o.option_name,pr};
           }).filter(Boolean);
-          if(!priced.length){ rows+=`<tr><td>${r.name}</td><td class="price">—</td></tr>`; return; }
+          if(!priced.length){ rows+=`<tr><td>${esc(r.name)}</td><td class="price">—</td></tr>`; return; }
           if(priced.length===1 && !priced[0].name){
-            rows+=`<tr><td>${r.name}</td><td class="price">$${priced[0].pr.toFixed(2)}</td></tr>`;
+            rows+=`<tr><td>${esc(r.name)}</td><td class="price">$${priced[0].pr.toFixed(2)}</td></tr>`;
           } else {
             // product name as a sub-header row, then one row per option (vertical)
-            rows+=`<tr><td colspan="2" style="padding-bottom:2px;font-weight:600">${r.name}</td></tr>`;
+            rows+=`<tr><td colspan="2" style="padding-bottom:2px;font-weight:600">${esc(r.name)}</td></tr>`;
             priced.forEach(o=>{
-              rows+=`<tr><td style="padding-left:22px;color:#5a4a3a">${o.name||""}</td><td class="price">$${o.pr.toFixed(2)}</td></tr>`;
+              rows+=`<tr><td style="padding-left:22px;color:#5a4a3a">${esc(o.name||"")}</td><td class="price">$${o.pr.toFixed(2)}</td></tr>`;
             });
           }
         });

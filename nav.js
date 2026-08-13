@@ -1,6 +1,22 @@
 // Bottom tab bar (mobile) / left rail (desktop).
-// Same order for everyone: Dashboard, Tasks, Inventory.
-// Admin extras appended at the END: Reports, Team.
+// Same order for everyone: Dashboard, Tasks, Inventory, Recipes, Agenda.
+// Admin extras appended at the END, or collapsed under an "Admin" button
+// when the screen is too small to show them flat.
+//
+// SINGLE SOURCE OF TRUTH for the admin items. This list previously existed
+// twice — once here and once as hardcoded HTML inside toggleMoreMenu — and
+// the two had already drifted ("Pricing" vs "Pricing Manager", "Team" vs
+// "Manage Team"). Both the flat rail and the popup menu now build from this.
+const ADMIN_ITEMS = [
+  { id: "planner",  href: "planner.html",  ico: "✎", label: "Planner" },
+  { id: "admin",    href: "admin.html",    ico: "◆", label: "Pricing" },
+  { id: "expenses", href: "expenses.html", ico: "$", label: "Expenses" },
+  { id: "units",    href: "units.html",    ico: "⚖", label: "Units" },
+  { id: "company",  href: "company.html",  ico: "⌂", label: "Company" },
+  { id: "reports",  href: "reports.html",  ico: "▤", label: "Reports" },
+  { id: "team",     href: "team.html",     ico: "☺", label: "Team" },
+];
+
 function renderNav(active, isAdmin) {
   const tabs = [
     { id: "dashboard", href: "dashboard.html", ico: "◉", label: "Dashboard" },
@@ -21,13 +37,6 @@ function renderNav(active, isAdmin) {
 
   // Admin tools. On a large screen there's room to show them directly;
   // on smaller screens they collapse under a single "Admin" menu button.
-  const ADMIN_ITEMS = [
-    { id: "admin",    href: "admin.html",    ico: "◆", label: "Pricing" },
-    { id: "expenses", href: "expenses.html", ico: "$", label: "Expenses" },
-    { id: "company",  href: "company.html",  ico: "⌂", label: "Company" },
-    { id: "reports",  href: "reports.html",  ico: "▤", label: "Reports" },
-    { id: "team",     href: "team.html",     ico: "☺", label: "Team" },
-  ];
   if (isAdmin) {
     const roomy = window.matchMedia("(min-width: 1000px) and (min-height: 640px)").matches;
     if (roomy) {
@@ -76,13 +85,18 @@ function toggleMoreMenu(anchorEl) {
   menu.style.cssText =
     "position:fixed;background:#fff;border:1px solid var(--line);"+
     "border-radius:14px;box-shadow:0 8px 30px rgba(61,46,35,.18);z-index:9999;overflow:hidden;min-width:170px";
-  menu.innerHTML = `
-    <a href="admin.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>◆</span> Pricing Manager</a>
-    <a href="expenses.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>$</span> Expenses</a>
-    <a href="company.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>⌂</span> Company</a>
-    <a href="reports.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso);border-bottom:1px solid var(--line)"><span>▤</span> Reports</a>
-    <a href="team.html" style="display:flex;align-items:center;gap:10px;padding:14px 18px;text-decoration:none;color:var(--espresso)"><span>☺</span> Manage Team</a>`;
+  // Generated from ADMIN_ITEMS so this menu and the desktop rail can never
+  // drift apart again. Adding a page is now one line, in one place.
+  menu.innerHTML = ADMIN_ITEMS.map((t, i) => {
+    const last = i === ADMIN_ITEMS.length - 1;
+    return `<a href="${attr(t.href)}" style="display:flex;align-items:center;gap:10px;padding:14px 18px;` +
+      `text-decoration:none;color:var(--espresso)${last ? "" : ";border-bottom:1px solid var(--line)"}">` +
+      `<span>${esc(t.ico)}</span> ${esc(t.label)}</a>`;
+  }).join("");
   document.body.appendChild(menu);
+  // The list is longer than it was; on a short screen it must not run off.
+  menu.style.maxHeight = "calc(100vh - 100px)";
+  menu.style.overflowY = "auto";
 
   // Position the menu next to the More button, whichever layout we're in.
   const isRail = window.matchMedia("(min-width: 1000px)").matches;
@@ -125,8 +139,11 @@ async function renderTopbar(title, prof) {
   prof = prof || await getMyProfile();
   const bar = document.createElement("header");
   bar.className = "topbar";
-  const roleTag = prof && prof.role === "admin" ? `<span class="rolechip">admin</span>` : "";
-  bar.innerHTML = `
+  // full_name is self-writable by any staff member, and this topbar renders on
+  // EVERY page including every admin screen — so it is the single widest XSS
+  // surface in the app. Escaped.
+  const roleTag = prof && prof.role === "admin" ? raw(`<span class="rolechip">admin</span>`) : "";
+  bar.innerHTML = h`
     <div style="display:flex;align-items:center;gap:10px">
       <img src="logo.svg" alt="" style="width:34px;height:34px;flex:none" onerror="this.style.display='none'">
       <div>

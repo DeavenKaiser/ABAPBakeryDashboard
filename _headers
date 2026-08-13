@@ -1,0 +1,76 @@
+# ============================================================
+# HTTP response headers — Netlify / Cloudflare Pages format.
+#
+# IMPORTANT: this file does NOTHING on GitHub Pages, which cannot
+# serve custom headers. It activates on the platform move in
+# ROADMAP List 5 §5 (subdomain routing needs Netlify or Cloudflare
+# anyway, since GitHub Pages allows one CNAME per repo).
+#
+# It is committed now so the policy is version-controlled and
+# reviewed before it is enforced, rather than written under pressure
+# on migration day.
+#
+# Why not a <meta> tag instead? Two reasons:
+#   1. Content-Security-Policy-Report-Only is IGNORED in a meta tag.
+#      Report-only is the whole point of this first stage, so meta
+#      cannot deliver it.
+#   2. frame-ancestors and report-uri are also ignored in meta.
+#
+# See docs/spec-csp-hardening.md for the full plan.
+# ============================================================
+
+/*
+  # ---- Report-only: observes, never blocks ----
+  # Violations appear in the browser console. Nothing breaks. Leave this
+  # running until the console is quiet for a week, then rename the header
+  # to Content-Security-Policy to enforce.
+  #
+  # script-src is already written as the STRICT target ('self', no
+  # 'unsafe-inline'), so today it will report a violation for every inline
+  # <script> block and every one of the 153 inline handlers. That is the
+  # point — the report is the refactor's to-do list, and it shrinks to
+  # nothing as task #34 progresses.
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://hdyyffeameoxocwvirdl.supabase.co wss://hdyyffeameoxocwvirdl.supabase.co https://zenquotes.io; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+
+  # ---- Enforced now: no downside, nothing to refactor first ----
+  # Clickjacking protection. Belt and braces with frame-ancestors above,
+  # which some older browsers ignore.
+  X-Frame-Options: DENY
+
+  # Stop browsers guessing content types.
+  X-Content-Type-Options: nosniff
+
+  # Don't leak the full URL (which can carry a shop's subdomain) to
+  # third parties like the fonts CDN.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # This app needs none of these.
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
+
+# ============================================================
+# Notes for when this is enforced
+# ============================================================
+#
+# connect-src MUST keep the wss:// entry. Realtime went live in
+# migration 001, and subscribeToChanges() swallows connection errors in
+# a try/catch — so dropping it kills cross-device updates silently, the
+# same way they were silently dead before the publication was fixed.
+#
+# https://zenquotes.io is only the dashboard's daily quote. It has a
+# local fallback (fallbackLine()), so it can be removed from the policy
+# and the feature dropped at no real cost if you'd rather not depend on
+# a third party.
+#
+# cdn.jsdelivr.net comes out of script-src once supabase-js and chart.js
+# are vendored into the repo (task #34). That also makes the app work on
+# shop wifi that blocks or throttles the CDN.
+#
+# style-src keeps 'unsafe-inline' permanently — there are 345 inline
+# style attributes and converting them is a large cosmetic refactor for
+# a much weaker threat than script injection. This is a deliberate
+# stopping point, not an oversight.
+#
+# Per-shop deploys: the two supabase.co origins are tenant-specific.
+# The build step that generates each shop's config must generate this
+# header too, or a shop's app will report violations against another
+# shop's project ref.

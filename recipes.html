@@ -90,8 +90,8 @@
               Filter${CATSET.size?" ("+CATSET.size+")":""} <span class="chev">▼</span></button>
             <div class="fs-menu">
               ${cats.map(c=>`<label class="fs-opt ${CATSET.has(c)?"selected":""}">
-                <input type="checkbox" ${CATSET.has(c)?"checked":""} onchange="toggleCat('${c.replace(/'/g,"\\'")}')">
-                ${c} (${RECIPES.filter(r=>(r.category||"Other")===c).length})</label>`).join("")}
+                <input type="checkbox" ${CATSET.has(c)?"checked":""} onchange="toggleCat(${jsArg(c)})">
+                ${esc(c)} (${RECIPES.filter(r=>(r.category||"Other")===c).length})</label>`).join("")}
               <div class="fs-actions"><button onclick="clearCats()">Clear</button></div>
             </div>
           </div>
@@ -134,10 +134,10 @@
       const rows = ings.map(ing => {
         const st = stockStatus(ing.ingredient);
         if (ing.est_cost!=null){ total+=Number(ing.est_cost); hasCost=true; }
-        const need = ing.amount!=null ? `${ing.amount} ${ing.unit||""}` : (ing.unit||"—");
-        const have = st.have!=null ? `${st.have} ${st.unit||""}` : (st.label==="not tracked" ? "—" : "—");
+        const need = ing.amount!=null ? `${Number(ing.amount)} ${esc(ing.unit||"")}` : esc(ing.unit||"—");
+        const have = st.have!=null ? `${Number(st.have)} ${esc(st.unit||"")}` : (st.label==="not tracked" ? "—" : "—");
         return `<tr>
-          <td><span class="dot-tag" style="background:${st.color};display:inline-block;margin-right:6px"></span>${ing.ingredient}</td>
+          <td><span class="dot-tag" style="background:${st.color};display:inline-block;margin-right:6px"></span>${esc(ing.ingredient)}</td>
           <td class="num">${need}</td>
           <td class="num" style="color:${st.color==='var(--berry)'?'var(--berry)':'inherit'}">${have}</td>
           ${SEE_MONEY ? `<td class="num" style="color:var(--crust)">${ing.est_cost!=null?"$"+Number(ing.est_cost).toFixed(2):""}</td>`:""}
@@ -150,21 +150,21 @@
       return `<div class="wcard recipe-card" style="margin-bottom:12px">
         <details>
           <summary style="cursor:pointer;font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--espresso);display:flex;align-items:center;gap:8px">
-            <span style="flex:1">${r.name} <span class="stat-label" style="font-weight:400">· ${r.category||"Other"}</span>${SEE_MONEY && hasCost?` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}</span>
+            <span style="flex:1">${esc(r.name)} <span class="stat-label" style="font-weight:400">· ${esc(r.category||"Other")}</span>${SEE_MONEY && hasCost?` <span class="stat-label" style="font-weight:400">· est. $${total.toFixed(2)}</span>`:""}</span>
           </summary>
           <div style="margin-top:10px">
             ${(OPTS[r.id]&&OPTS[r.id].length)?`<div class="opt-chips">${OPTS[r.id].map(o=>{
               const pr=o.price!=null?"$"+Number(o.price).toFixed(2):"—";
-              return `<span class="opt-chip">${o.option_name?o.option_name+" ":""}<b>${pr}</b></span>`;
+              return `<span class="opt-chip">${o.option_name?esc(o.option_name)+" ":""}<b>${pr}</b></span>`;
             }).join("")}</div>`:""}
             ${ingTable}
             <div class="stat-label" style="margin-top:8px">dot shows live inventory: <span style="color:var(--sage)">●</span> in stock · <span style="color:var(--berry)">●</span> low</div>
             ${r.directions?`<div style="margin-top:12px"><div class="stat-label" style="font-weight:700;margin-bottom:4px">Directions</div>
-              <div style="font-size:14px;line-height:1.5;white-space:pre-wrap">${r.directions.replace(/</g,"&lt;")}</div></div>`:""}
+              <div style="font-size:14px;line-height:1.5;white-space:pre-wrap">${esc(r.directions)}</div></div>`:""}
             ${CAN_EDIT?`<div style="margin-top:10px;display:flex;gap:8px">
               <button class="mini secondary" onclick="openEditor(${r.id})">Edit</button>
-              <button class="mini" onclick="planRecipe(${r.id},'${(r.name||"").replace(/'/g,"")}')">Add to plan</button>
-              <button class="mini" style="background:var(--berry)" onclick="deleteRecipe(${r.id},'${(r.name||"").replace(/'/g,"")}')">Delete</button>
+              <button class="mini" onclick="planRecipe(${r.id})">Add to plan</button>
+              <button class="mini" style="background:var(--berry)" onclick="deleteRecipe(${r.id})">Delete</button>
             </div>`:""}
           </div>
         </details>
@@ -180,9 +180,9 @@
       overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;z-index:100;padding:20px;overflow:auto";
       overlay.innerHTML=`<div class="card" style="max-width:520px;width:100%;margin:20px 0">
         <h2 class="section" style="margin-top:0">${editing?"Edit":"Add"} recipe</h2>
-        <div class="field"><label>Name</label><input type="text" id="rName" value="${editing?editing.name.replace(/"/g,"&quot;"):""}"></div>
+        <div class="field"><label>Name</label><input type="text" id="rName" value="${attr(editing?editing.name:"")}"></div>
         <div class="field"><label>Category (pick one or type a new type)</label>
-          <input type="text" id="rCat" list="catList" value="${editing?(editing.category||""):""}"
+          <input type="text" id="rCat" list="catList" value="${attr(editing?editing.category:"")}"
             style="font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);width:100%" placeholder="e.g. Bread, Drinks, Seasonal…">
           <datalist id="catList">
             ${cats.map(c=>`<option value="${c}"></option>`).join("")}
@@ -191,7 +191,7 @@
         <div id="ingRows"></div>
         <button class="mini secondary" style="margin-top:8px" onclick="addIngRow()">+ Add ingredient</button>
         <div class="field" style="margin-top:12px"><label>Directions</label>
-          <textarea id="rDir" style="width:100%;min-height:100px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:inherit;font-size:15px" placeholder="Step-by-step directions…">${editing?(editing.directions||"").replace(/</g,"&lt;"):""}</textarea></div>
+          <textarea id="rDir" style="width:100%;min-height:100px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:inherit;font-size:15px" placeholder="Step-by-step directions…">${esc(editing?editing.directions:"")}</textarea></div>
         <div class="error" id="rErr" style="min-height:auto;margin-top:10px"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
           <button class="mini secondary" onclick="this.closest('div[style*=fixed]').remove()">Cancel</button>
@@ -208,9 +208,9 @@
       const row=document.createElement("div");
       row.style.cssText="display:flex;gap:6px;margin-bottom:6px";
       row.innerHTML=`
-        <input type="text" placeholder="ingredient" class="ri-name" value="${data?(data.ingredient||"").replace(/"/g,"&quot;"):""}" style="flex:2">
+        <input type="text" placeholder="ingredient" class="ri-name" value="${attr(data?data.ingredient:"")}" style="flex:2">
         <input type="number" step="any" placeholder="amt" class="ri-amt" value="${data&&data.amount!=null?data.amount:""}" style="flex:1">
-        <input type="text" placeholder="unit" class="ri-unit" value="${data?(data.unit||""):""}" style="width:60px">
+        <input type="text" placeholder="unit" class="ri-unit" value="${attr(data?data.unit:"")}" style="width:60px">
         <button class="mini secondary" style="padding:4px 8px" onclick="this.parentElement.remove()">✕</button>`;
       wrap.appendChild(row);
     }
@@ -241,19 +241,28 @@
       document.querySelector("div[style*=fixed]").remove();
       await load();
     }
-    async function deleteRecipe(id,name){
+    // Takes only the id; the name is resolved here rather than carried through an
+    // onclick attribute. The previous .replace(/'/g,"") stripped single quotes but
+    // not double quotes, so a recipe name containing a " broke out of the attribute.
+    async function deleteRecipe(id){
+      const r = RECIPES.find(x => x.id === id);
+      if (!r) return;
+      const name = r.name || "this recipe";
       if(!confirm("Delete recipe: "+name+"?")) return;
       await sb.from("recipes").delete().eq("id",id);
       await load();
     }
 
     // Quick "add this recipe to a production day" from the recipe card
-    function planRecipe(id, name){
+    function planRecipe(id){
+      const r = RECIPES.find(x => x.id === id);
+      if (!r) return;
+      const name = r.name || "this recipe";
       const today=new Date().toISOString().slice(0,10);
       const overlay=document.createElement("div");
       overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px";
       overlay.innerHTML=`<div class="card" style="max-width:360px;width:100%;margin:0">
-        <h2 class="section" style="margin-top:0">Add "${name}" to plan</h2>
+        <h2 class="section" style="margin-top:0">Add "${esc(name)}" to plan</h2>
         <div class="field"><label>Day</label><input type="date" id="planDate" value="${today}"></div>
         <div class="field"><label>Quantity</label><input type="number" id="planQty" value="1" min="1" step="1"></div>
         <div class="error" id="planErr" style="min-height:auto"></div>

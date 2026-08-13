@@ -136,12 +136,12 @@
         html += `<div class="card">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <span class="muted">Viewing:</span>
-            ${ROLES.map(r=>`<button class="${VIEW_ROLE===r?"":"secondary"} mini" onclick="switchRole('${r}')">${roleLabel(r)}</button>`).join("")}
+            ${ROLES.map(r=>`<button class="${VIEW_ROLE===r?"":"secondary"} mini" onclick="switchRole(${jsArg(r)})">${esc(roleLabel(r))}</button>`).join("")}
             <button class="${VIEW_ROLE==="shared"?"":"secondary"} mini" onclick="switchRole('shared')">Shared</button>
           </div>
         </div>`;
         html += `<div class="card">
-          <div class="field"><label>Add a task for ${roleLabel(VIEW_ROLE)}</label>
+          <div class="field"><label>Add a task for ${esc(roleLabel(VIEW_ROLE))}</label>
             <input type="text" id="newTaskText" placeholder="Task description"></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <select id="newTaskFreq" style="font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
@@ -168,7 +168,7 @@
             <span style="font-size:22px">${allDone?"✓":"◷"}</span>
             <div style="flex:1">
               <div style="font-weight:700">${allDone?"Inventory count complete":"Inventory counting"}</div>
-              <div class="stat-label">${counted} of ${total} ${roleLabel(VIEW_ROLE)} items counted this week</div>
+              <div class="stat-label">${counted} of ${total} ${esc(roleLabel(VIEW_ROLE))} items counted this week</div>
               <div class="progress-wrap" style="margin-top:6px"><div class="progress-bar" style="width:${pct}%;background:${allDone?'var(--sage)':'var(--honey)'}"></div></div>
             </div>
           </div>
@@ -188,8 +188,8 @@
         const overdue = days <= 0 && !d;
         const cd = `<span class="freshness" style="${overdue?'color:var(--red);font-weight:700':''}">${countdownLabel(days)}</span>`;
         return `<div class="row ${d?"done":""}">
-          <input type="checkbox" ${d?"checked":""} onchange="toggle(${t.id},'${t.frequency}',this.checked)">
-          <div class="txt">${t.text}${t.area?`<div class="sub">${t.area}</div>`:""}${!d?cd:""}</div>
+          <input type="checkbox" ${d?"checked":""} onchange="toggle(${Number(t.id)},${jsArg(t.frequency)},this.checked)">
+          <div class="txt">${esc(t.text)}${t.area?`<div class="sub">${esc(t.area)}</div>`:""}${!d?cd:""}</div>
           ${(IS_ADMIN && editMode())?`<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
             ${t.owner==="shared"?`<select onchange="setShiftPart(${t.id},this.value)" title="Opening / Closing / Anytime" style="font-size:12px;padding:5px;border-radius:6px;border:1px solid var(--line)">
               <option value="anytime" ${(!t.shift_part||t.shift_part==="anytime")?"selected":""}>Anytime</option>
@@ -197,7 +197,7 @@
               <option value="closing" ${t.shift_part==="closing"?"selected":""}>Closing</option>
             </select>`:""}
             <select onchange="reassign(${t.id},this.value)" style="font-size:12px;padding:5px;border-radius:6px;border:1px solid var(--line)">
-              ${[...ROLES,"shared"].map(r=>`<option value="${r}" ${t.owner===r?"selected":""}>${roleLabel(r)}</option>`).join("")}
+              ${[...ROLES,"shared"].map(r=>`<option value="${attr(r)}" ${t.owner===r?"selected":""}>${esc(roleLabel(r))}</option>`).join("")}
             </select>
             <button class="mini" style="background:var(--red);padding:5px 9px" onclick="delTask(${t.id})">✕</button>
           </div>`:""}

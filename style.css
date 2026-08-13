@@ -138,6 +138,11 @@ table.rpt td.num { text-align: right; font-variant-numeric: tabular-nums; }
     top: 0; bottom: 0; right: auto; width: 92px; flex-direction: column;
     justify-content: flex-start; padding-top: 24px; gap: 6px; border-top: none;
     border-right: 1px solid var(--line);
+    /* The rail is fixed to the viewport height. An admin on a 1000x640 screen
+       sees 13 items at ~57px each — without this, everything past the fold is
+       unreachable, because a fixed element does not scroll with the page. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   nav.tabs a { flex: none; padding: 12px 4px; }
   body { padding-bottom: 0; padding-left: 92px; }

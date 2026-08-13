@@ -16,6 +16,9 @@
   <script src="nav.js?v=1785531464"></script>
   <script>
     let IS_ADMIN=false;
+    // Cached so click handlers can look a user up by id instead of carrying
+    // their name through an HTML attribute. See the note above renderUserRow.
+    let USERS=[];
     (async () => {
       try {
         console.log("[team] start");
@@ -35,10 +38,10 @@
         }
         if (!IS_ADMIN) {
           document.getElementById("app").innerHTML=`<div class="card"><div class="empty">
-            <strong>${prof.full_name || "This account"}</strong> is currently role
-            "<strong>${prof.role}</strong>", not admin.<br><br>
+            <strong>${esc(prof.full_name || "This account")}</strong> is currently role
+            "<strong>${esc(prof.role)}</strong>", not admin.<br><br>
             Run this in Supabase SQL editor:<br>
-            <code style="font-size:12px">update profiles set role='admin' where full_name='${prof.full_name}';</code>
+            <code style="font-size:12px">update profiles set role='admin' where full_name='${esc(prof.full_name)}';</code>
             <br><br>then reload.</div></div>`;
           return;
         }
@@ -47,7 +50,7 @@
       } catch (e) {
         console.error("[team] startup error:", e);
         document.getElementById("app").innerHTML=`<div class="card"><div class="error" style="min-height:auto">
-          Something went wrong starting this page: ${e.message}<br><br>Open the browser console (F12) for details.</div></div>`;
+          Something went wrong starting this page: ${esc(e.message)}<br><br>Open the browser console (F12) for details.</div></div>`;
       }
     })();
 
@@ -89,7 +92,7 @@
       if (r.error) {
         app.innerHTML = `<div class="card">
           <h2 class="section" style="margin-top:0">Team management isn't ready yet</h2>
-          <div class="error" style="min-height:auto">${r.error}</div>
+          <div class="error" style="min-height:auto">${esc(r.error)}</div>
           <p class="muted">This screen needs the <strong>manage-users</strong> Edge Function deployed to Supabase.
           From the project folder, run:</p>
           <div style="background:#f0ede8;border-left:3px solid var(--brown);padding:10px 12px;font-family:monospace;font-size:13px;border-radius:6px">
@@ -103,6 +106,7 @@
         return;
       }
       const users = r.users || [];
+      USERS = users;
 
       // Load tasks for the duplicate-check panel
       let DUPE_HTML = "";
@@ -133,13 +137,21 @@
         </div>
 
         <h2 class="section">Current team (${users.length})</h2><div class="card">`;
+      // Handlers below take ONLY the user id and look the record up via userById().
+      // Passing full_name through an onclick attribute is what made this page
+      // exploitable: it was sanitised with .replace(/'/g,"") which strips single
+      // quotes but not double quotes, so a name containing a " escaped the
+      // attribute entirely. The safe fix is not a better escape — it's not
+      // putting user-controlled text in the attribute at all.
       users.forEach(u => {
-        html += `<div class="row">
-          <div class="txt">${u.full_name} <span class="rolechip">${u.role}</span>
-            <div class="sub">${u.email||""}</div>
+        const inactive = u.active === false;
+        html += `<div class="row" style="${inactive?'opacity:.55':''}">
+          <div class="txt">${esc(u.full_name)} <span class="rolechip">${esc(u.role)}</span>
+            ${inactive?`<span class="pill" style="background:#f0ede8;color:#6B4F3A">deactivated</span>`:""}
+            <div class="sub">${esc(u.email||"")}</div>
             <div style="margin-top:5px">
               <label class="sub">Job:
-              <select onchange="setJob('${u.id}',this.value)" style="font-size:12px;padding:4px;border-radius:6px;border:1px solid var(--line)">
+              <select onchange="setJob(${jsArg(u.id)},this.value)" style="font-size:12px;padding:4px;border-radius:6px;border:1px solid var(--line)">
                 <option value="" ${!u.job_role?"selected":""}>— none —</option>
                 <option value="baker" ${u.job_role==="baker"?"selected":""}>Baker</option>
                 <option value="barista" ${u.job_role==="barista"?"selected":""}>Barista</option>
@@ -148,9 +160,12 @@
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-direction:column">
-            <button class="secondary mini" onclick="toggleRole('${u.id}','${u.role}')">${u.role==="admin"?"Make staff":"Make admin"}</button>
-            <button class="secondary mini" onclick="pwPrompt('${u.id}','${(u.full_name||"").replace(/'/g,"")}')">Set password</button>
-            <button class="mini" style="background:var(--red)" onclick="delUser('${u.id}','${(u.full_name||"").replace(/'/g,"")}')">Remove</button>
+            <button class="secondary mini" onclick="toggleRole(${jsArg(u.id)})">${u.role==="admin"?"Make staff":"Make admin"}</button>
+            <button class="secondary mini" onclick="pwPrompt(${jsArg(u.id)})">Set password</button>
+            ${inactive
+              ? `<button class="mini" onclick="setActive(${jsArg(u.id)},true)">Reactivate</button>`
+              : `<button class="mini" style="background:var(--honey)" onclick="setActive(${jsArg(u.id)},false)">Deactivate</button>`}
+            <button class="secondary mini" style="color:var(--red)" onclick="delUser(${jsArg(u.id)})">Delete…</button>
           </div>
         </div>`;
       });
@@ -186,10 +201,10 @@
         h += `<div class="card"><div class="stat-label" style="margin-bottom:8px;font-weight:700">Likely duplicates — same task in more than one place</div>`;
         crossOwner.forEach(group => {
           h += `<div style="border-bottom:1px solid var(--line);padding:8px 0">
-            <div style="font-weight:600">${group[0].text}</div>`;
+            <div style="font-weight:600">${esc(group[0].text)}</div>`;
           group.forEach(t => {
             h += `<div class="mini-item">
-              <span class="stat-label" style="flex:1">${roleLabel(t.owner)} · ${t.frequency}</span>
+              <span class="stat-label" style="flex:1">${esc(roleLabel(t.owner))} · ${esc(t.frequency)}</span>
               <button class="mini" style="background:var(--red);padding:3px 9px" onclick="removeTask(${t.id})">Remove this copy</button>
             </div>`;
           });
@@ -201,10 +216,10 @@
         h += `<div class="card"><div class="stat-label" style="margin-bottom:8px;font-weight:700">Same task at different frequencies — often legitimate</div>
           <div class="stat-label" style="margin-bottom:8px">e.g. a weekly light clean vs a monthly deep clean. Keep both unless it's truly a dupe.</div>`;
         sameOwnerDiffFreq.forEach(group => {
-          h += `<div style="border-bottom:1px solid var(--line);padding:8px 0"><div style="font-weight:600">${group[0].text}</div>`;
+          h += `<div style="border-bottom:1px solid var(--line);padding:8px 0"><div style="font-weight:600">${esc(group[0].text)}</div>`;
           group.forEach(t => {
             h += `<div class="mini-item">
-              <span class="stat-label" style="flex:1">${roleLabel(t.owner)} · ${t.frequency}</span>
+              <span class="stat-label" style="flex:1">${esc(roleLabel(t.owner))} · ${esc(t.frequency)}</span>
               <button class="mini secondary" style="padding:3px 9px" onclick="removeTask(${t.id})">Remove</button>
             </div>`;
           });
@@ -233,15 +248,22 @@
       if (r.error){ err.textContent=r.error; return; }
       await load();
     }
-    async function toggleRole(id, cur) {
-      await callFn({ action:"set_role", id, role: cur==="admin"?"staff":"admin" });
+    function userById(id) { return USERS.find(u => u.id === id) || null; }
+
+    async function toggleRole(id) {
+      const u = userById(id);
+      if (!u) return;
+      await callFn({ action:"set_role", id, role: u.role==="admin"?"staff":"admin" });
       await load();
     }
-    function pwPrompt(id, name) {
+    function pwPrompt(id) {
+      const u = userById(id);
+      if (!u) return;
+      const name = u.full_name || "this account";
       const overlay = document.createElement("div");
       overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px";
       overlay.innerHTML = `<div class="card" style="max-width:360px;width:100%;margin:0">
-        <h2 class="section" style="margin-top:0">Set password for ${name}</h2>
+        <h2 class="section" style="margin-top:0">Set password for ${esc(name)}</h2>
         <div class="field"><label>New password</label><input type="password" id="pw1"></div>
         <div class="field"><label>Confirm password</label><input type="password" id="pw2"></div>
         <p class="muted" style="font-size:12px">8+ chars, 3 of 4: lowercase, uppercase, number, symbol. They'll be asked to change it at next login.</p>
@@ -269,8 +291,36 @@
       await callFn({ action:"set_job", id, job_role });
       await load();
     }
-    async function delUser(id, name) {
-      if (!confirm(`Remove ${name}? This deletes their login for good.`)) return;
+    // Deactivate is the normal way to remove someone: access is revoked at the
+    // auth layer (the account is banned, not just flagged), and their history
+    // — completed tasks, inventory counts, orders — stays attributed to them.
+    async function setActive(id, active) {
+      const u = userById(id);
+      if (!u) return;
+      const name = u.full_name || "this account";
+      if (!active && !confirm(
+        `Deactivate ${name}?\n\nThey'll be signed out and won't be able to log back in. ` +
+        `Their completed tasks and inventory history stay intact, and you can reactivate them any time.`
+      )) return;
+      const r = await callFn({ action:"set_active", id, active });
+      if (r.error){ alert(r.error); return; }
+      await load();
+    }
+
+    // Deleting is only for genuine mistakes — a typo'd email, a test account.
+    // Anyone with recorded activity cannot be deleted (nine tables reference
+    // their profile), and the function explains that rather than surfacing a
+    // raw Postgres foreign-key error.
+    async function delUser(id) {
+      const u = userById(id);
+      if (!u) return;
+      const name = u.full_name || "this account";
+      if (!confirm(
+        `Permanently delete ${name}?\n\n` +
+        `This erases their login for good and cannot be undone. ` +
+        `If they've ever completed a task or counted inventory, this will be refused — ` +
+        `deactivate them instead.`
+      )) return;
       const r = await callFn({ action:"delete", id });
       if (r.error){ alert(r.error); return; }
       await load();

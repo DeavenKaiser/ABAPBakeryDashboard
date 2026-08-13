@@ -23,7 +23,7 @@
       const prof = await getMyProfile();
       IS_ADMIN = prof && prof.role==="admin";
       await renderTopbar("Prep Planner", prof);
-      renderNav("events", IS_ADMIN);
+      renderNav("planner", IS_ADMIN);
       if(!IS_ADMIN){ document.getElementById("app").innerHTML=`<div class="card"><div class="empty">Admins only.</div></div>`; return; }
       CAL_MONTH = new Date(); CAL_MONTH.setDate(1);
       await Promise.all([loadPricing(), loadPlan()]);
@@ -80,13 +80,13 @@
           Typical: retail ~25–30%, wholesale ~45–50%, drinks lower.</div>`;
       SETTINGS.forEach(s=>{
         html+=`<div class="mini-item" style="flex-wrap:wrap;gap:10px">
-          <span style="flex:1;min-width:120px;font-weight:600">${s.category}</span>
+          <span style="flex:1;min-width:120px;font-weight:600">${esc(s.category)}</span>
           <label class="stat-label">Retail %
             <input type="number" step="1" value="${Math.round(s.retail_food_cost_pct*100)}" style="width:64px;margin-left:4px"
-              onchange="saveMargin('${s.category}','retail',this.value)"></label>
+              onchange="saveMargin(${jsArg(s.category)},'retail',this.value)"></label>
           <label class="stat-label">Wholesale %
             <input type="number" step="1" value="${Math.round(s.wholesale_food_cost_pct*100)}" style="width:64px;margin-left:4px"
-              onchange="saveMargin('${s.category}','wholesale',this.value)"></label>
+              onchange="saveMargin(${jsArg(s.category)},'wholesale',this.value)"></label>
         </div>`;
       });
       html+=`</div>`;
@@ -99,7 +99,7 @@
         html+=`<div class="card"><h3 style="font-family:'Fraunces',serif;margin:0 0 10px">${cat}</h3>
           <div style="overflow-x:auto"><table class="rpt"><tr><th>Item</th><th class="num">Cost</th><th class="num">Retail</th><th class="num">Wholesale</th></tr>`;
         byCat[cat].sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
-          html+=`<tr><td>${p.name}</td>
+          html+=`<tr><td>${esc(p.name)}</td>
             <td class="num">$${Number(p.ingredient_cost||0).toFixed(2)}</td>
             <td class="num" style="font-weight:700;color:var(--crust)">${p.suggested_retail!=null?"$"+Number(p.suggested_retail).toFixed(2):"—"}</td>
             <td class="num">${p.suggested_wholesale!=null?"$"+Number(p.suggested_wholesale).toFixed(2):"—"}</td></tr>`;
@@ -143,7 +143,7 @@
         const isToday=dateStr===todayStr;
         html+=`<div onclick="openDay('${dateStr}')" style="min-height:64px;border:1px solid var(--line);border-radius:8px;padding:4px;cursor:pointer;${isToday?'border-color:var(--crust);border-width:2px':''};background:${ents.length?'#fbf3e6':'#fff'}">
           <div style="font-size:12px;font-weight:700;${isToday?'color:var(--crust)':''}">${day}</div>
-          ${ents.slice(0,3).map(e=>`<div style="font-size:10px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.quantity}× ${e.recipe_name||"?"}</div>`).join("")}
+          ${ents.slice(0,3).map(e=>`<div style="font-size:10px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Number(e.quantity)}× ${esc(e.recipe_name||"?")}</div>`).join("")}
           ${ents.length>3?`<div style="font-size:10px;color:var(--crust)">+${ents.length-3} more</div>`:""}
         </div>`;
       }
@@ -174,7 +174,7 @@
         html+=`<h2 class="section">${label}</h2><div class="card">`;
         byDate[d].forEach(e=>{
           html+=`<div class="mini-item">
-            <span style="flex:1">${e.quantity}× ${e.recipe_name||"?"}</span>
+            <span style="flex:1">${Number(e.quantity)}× ${esc(e.recipe_name||"?")}</span>
             <button class="mini secondary" style="padding:4px 10px" onclick="removeEntry(${e.id})">✕</button>
           </div>`;
         });
@@ -216,7 +216,7 @@
         let h=`<h2 class="section">${title}</h2><div class="card"><div style="overflow-x:auto">
           <table class="rpt"><tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${showShort?'<th class="num">Short by</th>':''}</tr>`;
         rows.forEach(p=>{
-          h+=`<tr><td>${p.ingredient}</td>
+          h+=`<tr><td>${esc(p.ingredient)}</td>
             <td class="num">${p.total_needed} ${p.needed_unit||""}</td>
             <td class="num">${p.current_on_hand!=null?p.current_on_hand+" "+(p.inventory_unit||""):"—"}</td>
             ${showShort?`<td class="num" style="color:var(--berry);font-weight:700">${p.shortfall!=null?p.shortfall+" "+(p.needed_unit||""):"—"}</td>`:""}</tr>`;
@@ -229,7 +229,7 @@
       html+=tbl("Units differ — please check", checkU, false);
       html+=tbl("Not in inventory", missing, false);
       if(ok.length) html+=`<h2 class="section">Covered (${ok.length})</h2>
-        <div class="card"><div class="stat-label">${ok.map(p=>p.ingredient).join(", ")}</div></div>`;
+        <div class="card"><div class="stat-label">${ok.map(p=>esc(p.ingredient)).join(", ")}</div></div>`;
 
       html+=`<div class="card"><div class="stat-label">Projection uses all planned bakes and approved events from today forward. Weight (g, kg, oz, lb) and volume units convert automatically, so grams-vs-pounds compares correctly. "Units differ" now only shows for units we can't convert (e.g. a custom unit) — the amounts are shown so you can judge.</div></div>`;
       return html;
@@ -244,11 +244,11 @@
       overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;z-index:100;padding:20px;overflow:auto";
       overlay.innerHTML=`<div class="card" style="max-width:460px;width:100%;margin:20px 0">
         <h2 class="section" style="margin-top:0">${label}</h2>
-        <div id="dayList">${ents.map(e=>`<div class="mini-item"><span style="flex:1">${e.quantity}× ${e.recipe_name||"?"}</span>
+        <div id="dayList">${ents.map(e=>`<div class="mini-item"><span style="flex:1">${Number(e.quantity)}× ${esc(e.recipe_name||"?")}</span>
           <button class="mini secondary" style="padding:4px 10px" onclick="removeEntry(${e.id},'${dateStr}')">✕</button></div>`).join("")||'<div class="stat-label">Nothing yet.</div>'}</div>
         <div style="display:flex;gap:6px;margin-top:12px">
           <select id="dayRecipe" style="flex:2;font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
-            ${RECIPES.map(r=>`<option value="${r.id}">${r.name}</option>`).join("")}
+            ${RECIPES.map(r=>`<option value="${Number(r.id)}">${esc(r.name)}</option>`).join("")}
           </select>
           <input type="number" id="dayQty" value="1" min="1" step="1" style="width:70px" placeholder="qty">
         </div>

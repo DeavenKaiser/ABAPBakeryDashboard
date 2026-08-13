@@ -144,7 +144,7 @@
       },
       handoff: () => ({ title:"Shift note", body:
         DATA.note && DATA.note.trim()
-          ? `<div style="font-size:15px;line-height:1.4;white-space:pre-wrap">${DATA.note.replace(/</g,"&lt;")}</div>
+          ? `<div style="font-size:15px;line-height:1.4;white-space:pre-wrap">${esc(DATA.note)}</div>
              <button class="mini secondary" style="margin-top:10px" onclick="location.href='mytasks.html'">Edit note</button>`
           : `<div class="empty" style="padding:12px">No note right now.<br><a href="mytasks.html">Leave one for the next shift →</a></div>` }),
       special_tasks: () => {
@@ -166,7 +166,7 @@
             return `<div class="mini-item" style="align-items:flex-start">
               <input type="checkbox" ${st.done?"checked":""} onchange="toggleSpecial(${st.id}, this.checked)" style="margin-top:3px">
               <div style="flex:1">
-                <span style="${st.done?'text-decoration:line-through;color:#aaa':''}">${st.text.replace(/</g,"&lt;")}</span>
+                <span style="${st.done?'text-decoration:line-through;color:#aaa':''}">${esc(st.text)}</span>
                 ${due?`<div class="stat-label">by ${due}</div>`:""}
               </div>
               ${IS_ADMIN?`<button class="mini secondary" style="padding:3px 8px" onclick="delSpecial(${st.id})">✕</button>`:""}
@@ -354,20 +354,23 @@
       const hidden=all.filter(w=>!shownIds.includes(w));
       if(hidden.length){
         html+=`<div class="tray"><span class="stat-label">Add a card:</span> `+
-          hidden.map(w=>`<span class="tray-chip" onclick="addWidget('${w}')">+ ${WIDGETS[w]().title}</span>`).join("")+`</div>`;
+          hidden.map(w=>`<span class="tray-chip" onclick="addWidget(${jsArg(w)})">+ ${esc(WIDGETS[w]().title)}</span>`).join("")+`</div>`;
       }
 
       // grid (masonry positioned by JS after render)
       html += `<div class="grid-dash" id="grid">`;
       layout.forEach(item=>{
         const w=item.w;
-        if(!WIDGETS[w]) return;
+        // The layout comes from user_prefs (user-writable jsonb) and localStorage,
+        // so `w` is untrusted. A plain `WIDGETS[w]` truthiness check passes for
+        // inherited keys like "constructor" and "__proto__"; hasOwnProperty does not.
+        if(!Object.prototype.hasOwnProperty.call(WIDGETS, w)) return;
         const {title,body}=WIDGETS[w]();
-        html += `<div class="wcard" draggable="false" data-w="${w}">
-          <h3>${title}
-            <span class="grip" title="Drag to move" onpointerdown="startDrag(event,'${w}')">⠿</span>
-            <button class="wsize" title="Resize card" onclick="openSizePicker(event,'${w}')">⤢</button>
-            <button class="wremove" title="Remove card" onclick="removeWidget('${w}')"></button>
+        html += `<div class="wcard" draggable="false" data-w="${attr(w)}">
+          <h3>${esc(title)}
+            <span class="grip" title="Drag to move" onpointerdown="startDrag(event,${jsArg(w)})">⠿</span>
+            <button class="wsize" title="Resize card" onclick="openSizePicker(event,${jsArg(w)})">⤢</button>
+            <button class="wremove" title="Remove card" onclick="removeWidget(${jsArg(w)})"></button>
           </h3>
           <div class="wbody">${body}</div>
         </div>`;
@@ -420,9 +423,11 @@
       const soon=(proj||[]).filter(p=>p.days_to_threshold!=null&&p.days_to_threshold>=0&&p.days_to_threshold<=7&&!already.has(p.id))
         .sort((a,b)=>a.days_to_threshold-b.days_to_threshold).slice(0,5);
       if(!soon.length){ el.innerHTML=`<div class="empty" style="padding:8px">Nothing projected to run low this week.<br><span class="stat-label">Gets smarter as counts build up.</span></div>`; return; }
+      // p.name is inventory_items.name — any signed-in staff member can write it,
+      // and this widget renders on the admin dashboard. Must be escaped.
       el.innerHTML = soon.map(p=>`<div class="mini-item">
-        <span class="dot-tag" style="background:var(--honey)"></span>${p.name}
-        <span class="stat-label" style="margin-left:auto">~${p.days_to_threshold}d</span></div>`).join("");
+        <span class="dot-tag" style="background:var(--honey)"></span>${esc(p.name)}
+        <span class="stat-label" style="margin-left:auto">~${Number(p.days_to_threshold)}d</span></div>`).join("");
     }
 
     // ---------- widget management ----------

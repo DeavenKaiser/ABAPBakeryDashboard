@@ -75,8 +75,8 @@
           <tr><th>Expense</th><th class="num">Amount</th><th>Period</th><th class="num">Monthly</th><th></th></tr>`;
         EXPENSES.forEach(e=>{
           const m = e.period==="monthly"?Number(e.amount):Number(e.amount)/12;
-          html+=`<tr><td>${e.name}</td><td class="num">$${Number(e.amount).toFixed(2)}</td>
-            <td>${e.period}</td><td class="num" style="color:var(--crust);font-weight:600">$${m.toFixed(2)}</td>
+          html+=`<tr><td>${esc(e.name)}</td><td class="num">$${Number(e.amount).toFixed(2)}</td>
+            <td>${esc(e.period)}</td><td class="num" style="color:var(--crust);font-weight:600">$${m.toFixed(2)}</td>
             <td><button class="mini secondary" style="padding:3px 8px" onclick="delExpense(${e.id})">✕</button></td></tr>`;
         });
         html+=`<tr><td colspan="3" style="text-align:right;font-weight:700">Total monthly overhead</td>
@@ -100,9 +100,9 @@
         html+=`<div style="overflow-x:auto"><table class="rpt" style="margin-top:10px"><tr><th>Month</th><th class="num">Sales</th><th class="num">Overhead %</th><th></th></tr>`;
         SALES.slice().sort((a,b)=>b.month_key.localeCompare(a.month_key)).forEach(s=>{
           const pct=(Number(s.amount)>0)?(oh/Number(s.amount)*100):null;
-          html+=`<tr><td>${s.month_key}</td><td class="num">$${Number(s.amount).toFixed(2)}</td>
+          html+=`<tr><td>${esc(s.month_key)}</td><td class="num">$${Number(s.amount).toFixed(2)}</td>
             <td class="num">${pct!=null?pct.toFixed(1)+"%":"—"}</td>
-            <td><button class="mini secondary" style="padding:3px 8px" onclick="delSales('${s.month_key}')">✕</button></td></tr>`;
+            <td><button class="mini secondary" style="padding:3px 8px" onclick="delSales(${jsArg(s.month_key)})">✕</button></td></tr>`;
         });
         html+=`</table></div>`;
       }

@@ -120,7 +120,7 @@ function canEditCount(it) {
         <div class="fs-drop">
           <button class="fs-btn ${TYPESET.size?"has-active":""}" onclick="fsToggle(this)">Type${TYPESET.size?" ("+TYPESET.size+")":""} <span class="chev">▼</span></button>
           <div class="fs-menu">
-            ${allCats.map(c=>`<label class="fs-opt ${TYPESET.has(c)?"selected":""}"><input type="checkbox" ${TYPESET.has(c)?"checked":""} onchange="toggleType('${c.replace(/'/g,"\\'")}')"> ${c} (${ITEMS.filter(i=>(i.category||"Other")===c).length})</label>`).join("")}
+            ${allCats.map(c=>`<label class="fs-opt ${TYPESET.has(c)?"selected":""}"><input type="checkbox" ${TYPESET.has(c)?"checked":""} onchange="toggleType(${jsArg(c)})"> ${esc(c)} (${ITEMS.filter(i=>(i.category||"Other")===c).length})</label>`).join("")}
             <div class="fs-actions"><button onclick="clearTypes()">Clear</button></div>
           </div>
         </div>
@@ -166,12 +166,14 @@ function canEditCount(it) {
       list.forEach(it => {
         if (grouped) {
           const g = it.category || "Other";
-          if (g !== lastGroup) { if (open) html += `</div>`; html += `<h2 class="section">${g}</h2><div class="card">`; lastGroup=g; open=true; }
+          if (g !== lastGroup) { if (open) html += `</div>`; html += `<h2 class="section">${esc(g)}</h2><div class="card">`; lastGroup=g; open=true; }
         }
         const below = isBelow(it);
         let fresh = "";
         if (IS_ADMIN && it.updated_at) {
-          const who = it.updated_by_name ? "by "+it.updated_by_name : "";
+          // updated_by_name comes from profiles.full_name, which every staff
+          // member can write on their own row. Escaped.
+          const who = it.updated_by_name ? "by "+esc(it.updated_by_name) : "";
           const when = new Date(it.updated_at).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
           fresh = `<div class="freshness">Last counted ${who} · ${when}</div>`;
         }
@@ -180,18 +182,18 @@ function canEditCount(it) {
           <div class="txt">
             ${editing
               ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-                   <input type="text" value="${(it.name||"").replace(/"/g,"&quot;")}" onchange="setField(${it.id},'name',this.value)"
+                   <input type="text" value="${attr(it.name)}" onchange="setField(${it.id},'name',this.value)"
                      style="font-size:15px;font-weight:600;border:1px solid var(--line);border-radius:6px;padding:4px 8px;min-width:140px;flex:1">
                  </div>
                  <div class="sub" style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
                    <label>threshold <input type="number" step="any" value="${it.threshold??""}" onchange="setField(${it.id},'threshold',this.value)" style="width:64px"></label>
-                   <label>unit <input type="text" value="${(it.unit||"").replace(/"/g,"&quot;")}" onchange="setField(${it.id},'unit',this.value)" style="width:64px"></label>
-                   <label>min <input type="text" value="${(it.min_on_hand||"").toString().replace(/"/g,"&quot;")}" onchange="setField(${it.id},'min_on_hand',this.value)" style="width:64px"></label>
+                   <label>unit <input type="text" value="${attr(it.unit)}" onchange="setField(${it.id},'unit',this.value)" style="width:64px"></label>
+                   <label>min <input type="text" value="${attr(it.min_on_hand)}" onchange="setField(${it.id},'min_on_hand',this.value)" style="width:64px"></label>
                  </div>`
-              : `<div style="font-size:15px">${it.name}
+              : `<div style="font-size:15px">${esc(it.name)}
                    ${below?'<span class="pill below">BELOW</span>':''}
                    ${it.order_extra?'<span class="pill extra">EXTRA</span>':''}</div>
-                 <div class="sub">min ${it.min_on_hand??"—"} · threshold ${it.threshold??"—"}${unitLabel(it)}${IS_ADMIN&&it.unit_cost!=null?` · $${it.unit_cost}/${it.pack_unit||"unit"}${it.cost_is_estimate?' <span style="color:var(--honey);font-weight:700">est.</span>':''}`:""}</div>`}
+                 <div class="sub">min ${esc(it.min_on_hand??"—")} · threshold ${it.threshold??"—"}${unitLabel(it)}${IS_ADMIN&&it.unit_cost!=null?` · $${Number(it.unit_cost)}/${esc(it.pack_unit||"unit")}${it.cost_is_estimate?' <span style="color:var(--honey);font-weight:700">est.</span>':''}`:""}</div>`}
             <div style="margin-top:4px">
               <button class="tbtn extra ${it.order_extra?"on":""}" onclick="setExtra(${it.id}, ${!it.order_extra})">
                 <span class="dot">${it.order_extra?"●":"○"}</span> Order extra</button>
@@ -208,7 +210,7 @@ function canEditCount(it) {
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
             ${canEditCount(it)
               ? `<input type="number" class="count-num" value="${it.current_on_hand??""}" placeholder="qty" onchange="setCount(${it.id},this.value)">`
-              : `<div class="count-num" style="text-align:center;color:#a99;border:1px solid var(--line);border-radius:8px;padding:8px 0" title="Only ${roleLabel(it.owner)} can update this count">${it.current_on_hand??"—"}</div>`}
+              : `<div class="count-num" style="text-align:center;color:#a99;border:1px solid var(--line);border-radius:8px;padding:8px 0" title="Only ${attr(roleLabel(it.owner))} can update this count">${it.current_on_hand??"—"}</div>`}
             ${editing?`<button class="mini" style="background:var(--red);padding:4px 9px;font-size:12px" onclick="delItem(${it.id})">✕ remove</button>`:""}
           </div>
         </div>`;
@@ -238,9 +240,9 @@ function canEditCount(it) {
     function unitLabel(it){
       if (it.units_need_review) return ' · <span style="color:var(--berry);font-weight:700">unit?</span>';
       if (it.pack_unit && it.base_unit && it.pack_unit !== it.base_unit)
-        return ` · ${it.pack_unit} of ${it.pack_size} ${it.base_unit}`;
-      if (it.base_unit) return ` · ${it.base_unit}`;
-      return it.unit ? " · "+it.unit : "";
+        return ` · ${esc(it.pack_unit)} of ${Number(it.pack_size)} ${esc(it.base_unit)}`;
+      if (it.base_unit) return ` · ${esc(it.base_unit)}`;
+      return it.unit ? " · "+esc(it.unit) : "";
     }
 
     async function setCost(id,val){ const n=val===""?null:Number(val); const it=ITEMS.find(i=>i.id===id);

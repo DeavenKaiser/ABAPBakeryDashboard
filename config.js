@@ -11,6 +11,117 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_e7jEPd_j-SksoDDs3mGAqA_djkuqxBt
 // Create the shared client (loaded from the CDN script in each HTML page)
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
+// ============================================================
+// HTML escaping — read this before writing any innerHTML.
+//
+// Most values we render come from the database, and several tables
+// are writable by any signed-in staff member (inventory_items,
+// special_tasks, shift_note, events, and your own profiles row).
+// Dropping one of those straight into innerHTML means a staff member
+// can run script inside an ADMIN's session. That's the whole ballgame.
+//
+//   esc()    text, and values inside a quoted attribute
+//   attr()   same thing; use it when the intent is an attribute
+//   jsArg()  a value being passed to an inline onclick/onchange
+//   h``      tagged template that escapes every ${} automatically
+//
+// New code should use h``. It is safe by default, which matters more
+// than brevity — you cannot forget to call something you aren't calling.
+// Existing pages are being converted file by file.
+// ============================================================
+
+function esc(v) {
+  if (v == null) return "";
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Alias. `attr(x)` reads better than `esc(x)` inside value="...".
+// Always keep attributes quoted — unquoted attributes are not safe
+// with this (or any) escaper.
+const attr = esc;
+
+// For a value crossing into JavaScript inside an HTML attribute, e.g.
+//   onclick="pick(${jsArg(name)})"
+// HTML-escaping alone is not enough there: the browser HTML-decodes the
+// attribute and THEN parses it as JS, so a quote in the data would break
+// out. JSON-encode first, then HTML-escape the result.
+function jsArg(v) {
+  return esc(JSON.stringify(v == null ? null : String(v)));
+}
+
+// Tagged template that escapes every interpolation.
+//   h`<div>${item.name}</div>`
+// Nested h`` results and arrays of them pass through unescaped, so
+// composition works:
+//   h`<ul>${items.map(i => h`<li>${i.name}</li>`)}</ul>`
+// To embed HTML you built yourself and know is safe, wrap it: raw(str).
+class SafeHtml {
+  constructor(value) { this.value = value; }
+  toString() { return this.value; }
+}
+function raw(html) { return new SafeHtml(String(html == null ? "" : html)); }
+function renderValue(v) {
+  if (v == null || v === false) return "";
+  if (v instanceof SafeHtml) return v.value;
+  if (Array.isArray(v)) return v.map(renderValue).join("");
+  return esc(v);
+}
+function h(strings, ...values) {
+  let out = strings[0];
+  for (let i = 0; i < values.length; i++) out += renderValue(values[i]) + strings[i + 1];
+  return new SafeHtml(out);
+}
+
+// ============================================================
+// Event delegation — use this instead of inline onclick/onchange.
+//
+// Inline handlers are the reason Content-Security-Policy has to allow
+// 'unsafe-inline' for scripts, which is what lets an injected payload
+// run at all. Every handler moved here is a step toward
+// `script-src 'self'`. See docs/spec-csp-hardening.md.
+//
+// It also removes a whole bug class. Values travel in data- attributes
+// escaped once by attr(), instead of being interpolated into a quoted
+// JS string inside a quoted HTML attribute — which is exactly what was
+// exploitable in team.html and recipes.html.
+//
+//   // markup
+//   `<button data-action="set-extra" data-id="${attr(it.id)}">Order extra</button>`
+//   `<select data-change="set-job" data-id="${attr(u.id)}">…</select>`
+//
+//   // once per page, after the functions exist
+//   onAction("set-extra", el => setExtra(Number(el.dataset.id)));
+//   onChangeAction("set-job", el => setJob(el.dataset.id, el.value));
+//
+// One listener per event type for the whole document, so re-rendering a
+// list doesn't re-bind anything and large lists get cheaper, not dearer.
+// ============================================================
+
+const _actions = { click: Object.create(null), change: Object.create(null) };
+
+function onAction(name, fn)       { _actions.click[name]  = fn; }
+function onChangeAction(name, fn) { _actions.change[name] = fn; }
+
+function _delegate(kind, attribute) {
+  return function (event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const el = target.closest("[" + attribute + "]");
+    if (!el) return;
+    const fn = _actions[kind][el.getAttribute(attribute)];
+    if (typeof fn !== "function") return;   // unregistered name: ignore, don't throw
+    fn(el, event);
+  };
+}
+
+document.addEventListener("click",  _delegate("click",  "data-action"));
+document.addEventListener("change", _delegate("change", "data-change"));
+
 // ---- Helpers shared across pages ----
 
 // Redirect to login if not signed in; returns the session.
@@ -24,11 +135,23 @@ async function requireLogin() {
 }
 
 // Get the current user's profile row (name + role).
+//
+// Also enforces deactivation. The authoritative control is the auth-layer ban
+// applied by the manage-users function — that cannot be bypassed from the
+// console. But banning only stops the token being REFRESHED; an access token
+// already issued stays valid until it expires (1 hour by default). This check
+// closes that window on the next page load, which for a shop tablet in use is
+// effectively immediate.
 async function getMyProfile() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return null;
   const { data, error } = await sb.from("profiles").select("*").eq("id", user.id).maybeSingle();
   if (error) { console.error("getMyProfile error:", error); return null; }
+  if (data && data.active === false) {
+    try { await sb.auth.signOut(); } catch (e) {}
+    window.location.href = "index.html?deactivated=1";
+    return null;
+  }
   return data;  // null if no profile row exists yet
 }
 
