@@ -14,6 +14,7 @@ const ADMIN_ITEMS = [
   { id: "units",    href: "units.html",    ico: "⚖", label: "Units" },
   { id: "company",  href: "company.html",  ico: "⌂", label: "Company" },
   { id: "reports",  href: "reports.html",  ico: "▤", label: "Reports" },
+  { id: "history",  href: "history.html",  ico: "◷", label: "History" },
   { id: "team",     href: "team.html",     ico: "☺", label: "Team" },
 ];
 
@@ -151,7 +152,11 @@ async function renderTopbar(title, prof) {
         <div class="who">${prof ? prof.full_name : ""} ${roleTag}</div>
       </div>
     </div>
-    <button class="secondary" onclick="signOut()" style="padding:8px 12px;font-size:13px">Sign out</button>`;
+    <div style="display:flex;gap:6px;align-items:center">
+      <a href="settings.html" class="secondary" title="Settings"
+         style="padding:8px 12px;font-size:13px;text-decoration:none;border-radius:10px;line-height:1.2">⚙</a>
+      <button class="secondary" onclick="signOut()" style="padding:8px 12px;font-size:13px">Sign out</button>
+    </div>`;
   document.body.prepend(bar);
 }
 

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Settings</title>
+  <link rel="stylesheet" href="style.css?v=1786667010">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading settings…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1786667010"></script>
+  <script src="nav.js?v=1786667010"></script>
+  <script>
+    // ============================================================
+    // Settings — one page, two audiences.
+    //
+    //   My account   everyone: display name, password
+    //   Shop         admins:   job roles, timings
+    //
+    // Job roles became data-driven in migration 002 but were editable only
+    // through SQL until this page existed. App timings moved out of config.js
+    // in migration 003.
+    //
+    // Delegation-first (data-action / data-change, no inline handlers), so it
+    // needs no conversion for strict CSP — see docs/spec-csp-hardening.md.
+    // ============================================================
+
+    let PROF = null, IS_ADMIN = false, ROLES_EDIT = [], MSG = "", MSG_KIND = "ok";
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      PROF = await getMyProfile();
+      if (!PROF) return;
+      IS_ADMIN = PROF.role === "admin";
+      await renderTopbar("Settings", PROF);
+      renderNav("settings", IS_ADMIN);
+      if (IS_ADMIN) await loadRolesForEdit();
+      render();
+    })();
+
+    // Admins edit inactive roles too, so this deliberately does not filter on
+    // active — unlike the cached list the rest of the app uses.
+    async function loadRolesForEdit() {
+      const { data, error } = await sb.from("job_roles").select("*").order("sort_order");
+      if (error) { flash("Couldn't load job roles: " + error.message, "err"); return; }
+      ROLES_EDIT = data || [];
+    }
+
+    function flash(text, kind) { MSG = text; MSG_KIND = kind || "ok"; render(); }
+
+    // ---------- render ----------
+    function render() {
+      const app = document.getElementById("app");
+      app.innerHTML = String(h`
+        <div class="hero" style="padding:18px 22px"><div>
+          <h1 style="font-size:22px">Settings</h1>
+          <div class="sub">Your account${IS_ADMIN ? ", and how the shop works" : ""}</div>
+        </div></div>
+        ${MSG ? h`<div class="card"><div class="${MSG_KIND === "err" ? "error" : ""}"
+          style="min-height:auto;${MSG_KIND === "err" ? "" : "color:var(--sage);font-weight:700"}">${MSG}</div></div>` : ""}
+        ${accountSection()}
+        ${IS_ADMIN ? h`${rolesSection()}${timingSection()}` : ""}
+      `);
+    }
+
+    function accountSection() {
+      const jobLabel = PROF.job_role ? roleLabel(PROF.job_role) : "— none —";
+      return h`<h2 class="section">My account</h2>
+        <div class="card">
+          <div class="field"><label>Display name</label>
+            <input type="text" id="myName" value="${attr(PROF.full_name)}" style="width:100%"></div>
+          <div class="field"><label>Job</label>
+            <input type="text" value="${attr(jobLabel)}" disabled style="width:100%;opacity:.6">
+            <div class="stat-label">Only an admin can change this.</div></div>
+          <button class="mini" data-action="save-name">Save name</button>
+        </div>
+
+        <div class="card">
+          <div class="field"><label>New password</label><input type="password" id="pw1"></div>
+          <div class="field"><label>Confirm new password</label><input type="password" id="pw2"></div>
+          <p class="muted" style="font-size:12px">At least 8 characters, with 3 of these 4:
+            lowercase, uppercase, number, symbol.</p>
+          <div class="error" id="pwErr" style="min-height:auto"></div>
+          <button class="mini" data-action="change-password">Change password</button>
+        </div>`;
+    }
+
+    function rolesSection() {
+      const dayOpts = (sel) => h`<option value="" ${sel == null ? "selected" : ""}>— by frequency —</option>
+        ${[0,1,2,3,4,5,6].map(d => h`<option value="${String(d)}" ${sel === d ? "selected" : ""}>${dayName(d)}</option>`)}`;
+
+      return h`<h2 class="section">Job roles</h2>
+        <div class="card">
+          <div class="stat-label" style="margin-bottom:10px">
+            These drive task lists, inventory ownership and the countdown widget.
+            A role in use can't be deleted — retire it instead, which hides it
+            everywhere without touching its history.
+          </div>
+          ${ROLES_EDIT.length ? ROLES_EDIT.map(r => h`
+            <div class="row" style="${r.active ? "" : "opacity:.55"}">
+              <div class="txt" style="flex:1">
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                  <input type="text" value="${attr(r.label)}" data-change="role-label" data-key="${attr(r.key)}"
+                    style="font-weight:600;min-width:120px;flex:1">
+                  <code class="stat-label">${r.key}</code>
+                  ${r.assignable ? "" : raw('<span class="pill" style="background:#f0ede8;color:#6B4F3A">not a job</span>')}
+                  ${r.active ? "" : raw('<span class="pill" style="background:#f0ede8;color:#6B4F3A">retired</span>')}
+                </div>
+                <div class="sub" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+                  <label class="stat-label">Inventory day
+                    <select data-change="role-dow" data-key="${attr(r.key)}"
+                      style="font-size:12px;padding:4px;border-radius:6px;border:1px solid var(--line)">
+                      ${dayOpts(r.due_dow)}
+                    </select></label>
+                  <label class="stat-label">
+                    <input type="checkbox" data-change="role-recipes" data-key="${attr(r.key)}"
+                      ${r.can_edit_recipes ? "checked" : ""}> can edit recipes</label>
+                </div>
+              </div>
+              <button class="secondary mini" data-action="role-active" data-key="${attr(r.key)}"
+                data-next="${r.active ? "false" : "true"}">${r.active ? "Retire" : "Restore"}</button>
+            </div>`) : h`<div class="empty">No job roles yet.</div>`}
+        </div>
+
+        <div class="card">
+          <div class="field" style="margin-bottom:8px"><label>Add a role</label></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="newRoleLabel" placeholder="e.g. Shift Lead" style="flex:1;min-width:140px">
+            <select id="newRoleDow" style="font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
+              ${dayOpts(null)}
+            </select>
+            <button class="mini" data-action="add-role">Add role</button>
+          </div>
+          <div class="stat-label" style="margin-top:6px">
+            A short key is generated from the name — "Shift Lead" becomes <code>shift_lead</code>.
+            Keys are permanent because tasks and inventory point at them.
+          </div>
+          <div class="error" id="roleErr" style="min-height:auto"></div>
+        </div>`;
+    }
+
+    function timingSection() {
+      return h`<h2 class="section">Timings</h2>
+        <div class="card">
+          <div class="stat-label" style="margin-bottom:10px">
+            Applies to everyone. Takes effect the next time each device loads a page.
+          </div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <label class="stat-label">Sign out after
+              <input type="number" min="1" max="480" id="idleMin"
+                value="${String(appSetting("idle_logout_minutes", 30))}"
+                style="width:70px;margin-left:4px"> minutes idle</label>
+            <label class="stat-label">Warn
+              <input type="number" min="5" max="600" id="warnSec"
+                value="${String(appSetting("idle_warning_seconds", 60))}"
+                style="width:70px;margin-left:4px"> seconds before</label>
+            <label class="stat-label">Edit mode reverts after
+              <input type="number" min="1" max="60" id="editMin"
+                value="${String(appSetting("edit_mode_timeout_minutes", 2))}"
+                style="width:70px;margin-left:4px"> minutes</label>
+          </div>
+          <button class="mini" style="margin-top:12px" data-action="save-timings">Save timings</button>
+        </div>`;
+    }
+
+    // ---------- account actions ----------
+    onAction("save-name", async () => {
+      const name = document.getElementById("myName").value.trim();
+      if (!name) { flash("Name can't be empty.", "err"); return; }
+      // Migration 001 revoked blanket UPDATE on profiles and re-granted only
+      // full_name and must_change_password, so this is the one column a person
+      // can change about themselves. role and job_role are refused by Postgres.
+      const { error } = await sb.from("profiles").update({ full_name: name }).eq("id", PROF.id);
+      if (error) { flash("Couldn't save: " + error.message, "err"); return; }
+      PROF.full_name = name;
+      flash("Name saved.");
+    });
+
+    onAction("change-password", async () => {
+      const err = document.getElementById("pwErr");
+      const p1 = document.getElementById("pw1").value;
+      const p2 = document.getElementById("pw2").value;
+      err.textContent = "";
+      if (p1 !== p2) { err.textContent = "The two passwords don't match."; return; }
+      const cats = [/[a-z]/,/[A-Z]/,/[0-9]/,/[^A-Za-z0-9]/].filter(re => re.test(p1)).length;
+      if (p1.length < 8 || cats < 3) {
+        err.textContent = "Must be 8+ characters with 3 of 4: lowercase, uppercase, number, symbol.";
+        return;
+      }
+      const { error } = await sb.auth.updateUser({ password: p1 });
+      if (error) { err.textContent = error.message; return; }
+      await sb.from("profiles").update({ must_change_password: false }).eq("id", PROF.id);
+      flash("Password changed.");
+    });
+
+    // ---------- role actions ----------
+    async function patchRole(key, patch) {
+      const { error } = await sb.from("job_roles").update(patch).eq("key", key);
+      if (error) { flash("Couldn't save: " + error.message, "err"); return false; }
+      const r = ROLES_EDIT.find(x => x.key === key);
+      if (r) Object.assign(r, patch);
+      _jobRoles = null;              // drop the cached list so other pages re-read
+      await loadJobRoles();
+      return true;
+    }
+
+    onChangeAction("role-label", async el => {
+      const label = el.value.trim();
+      if (!label) { flash("Label can't be empty.", "err"); return; }
+      if (await patchRole(el.dataset.key, { label })) flash("Saved.");
+    });
+
+    onChangeAction("role-dow", async el => {
+      const v = el.value === "" ? null : Number(el.value);
+      if (await patchRole(el.dataset.key, { due_dow: v })) flash("Saved.");
+    });
+
+    onChangeAction("role-recipes", async el => {
+      if (await patchRole(el.dataset.key, { can_edit_recipes: el.checked })) flash("Saved.");
+    });
+
+    onAction("role-active", async el => {
+      const next = el.dataset.next === "true";
+      if (!next && !confirm(
+        "Retire this role?\n\nIt disappears from task lists, inventory and the " +
+        "team screen. Nothing is deleted, and you can restore it any time."
+      )) return;
+      if (await patchRole(el.dataset.key, { active: next })) {
+        await loadRolesForEdit();
+        flash(next ? "Role restored." : "Role retired.");
+      }
+    });
+
+    onAction("add-role", async () => {
+      const err = document.getElementById("roleErr");
+      err.textContent = "";
+      const label = document.getElementById("newRoleLabel").value.trim();
+      const dowRaw = document.getElementById("newRoleDow").value;
+      if (!label) { err.textContent = "Give the role a name."; return; }
+
+      // job_roles_key_format requires ^[a-z][a-z0-9_]*$
+      const key = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      if (!key || !/^[a-z]/.test(key)) {
+        err.textContent = "That name doesn't make a usable key — start it with a letter.";
+        return;
+      }
+      if (ROLES_EDIT.some(r => r.key === key)) { err.textContent = `A role with key "${key}" already exists.`; return; }
+
+      const { error } = await sb.from("job_roles").insert({
+        key, label,
+        due_dow: dowRaw === "" ? null : Number(dowRaw),
+        sort_order: (ROLES_EDIT.filter(r => r.assignable).length + 1),
+        assignable: true, active: true, can_edit_recipes: false,
+      });
+      if (error) { err.textContent = error.message; return; }
+      document.getElementById("newRoleLabel").value = "";
+      _jobRoles = null;
+      await Promise.all([loadRolesForEdit(), loadJobRoles()]);
+      flash(`Added "${label}".`);
+    });
+
+    // ---------- timings ----------
+    onAction("save-timings", async () => {
+      const rows = [
+        ["idle_logout_minutes",       Number(document.getElementById("idleMin").value)],
+        ["idle_warning_seconds",      Number(document.getElementById("warnSec").value)],
+        ["edit_mode_timeout_minutes", Number(document.getElementById("editMin").value)],
+      ];
+      for (const [key, value] of rows) {
+        if (!Number.isFinite(value) || value < 1) { flash(`"${key}" needs a positive number.`, "err"); return; }
+      }
+      const { data: { user } } = await sb.auth.getUser();
+      for (const [key, value] of rows) {
+        const { error } = await sb.from("app_settings")
+          .upsert({ key, value, updated_at: new Date().toISOString(), updated_by: user.id },
+                  { onConflict: "key" });
+        if (error) { flash("Couldn't save: " + error.message, "err"); return; }
+      }
+      _appSettings = null;
+      await loadAppSettings();       // also restarts the idle timers in place
+      flash("Timings saved.");
+    });
+  </script>
+</body>
+</html>

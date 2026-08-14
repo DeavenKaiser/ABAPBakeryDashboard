@@ -52,10 +52,8 @@ function corsFor(req: Request): Record<string, string> {
   };
 }
 
+// Access roles are a fixed pair — they map to policy logic, not shop config.
 const VALID_ROLES = ["admin", "staff"];
-// TODO: once Features #4 lands, validate against the job_roles table instead
-// of this list. Kept in sync with profiles_job_role_check for now.
-const VALID_JOB_ROLES = ["baker", "barista", "cleaning"];
 
 const BAN_FOREVER = "876000h";   // ~100 years
 const UNBAN = "none";
@@ -98,6 +96,24 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action;
 
+    // Job roles are per-shop data since migration 002, so they are read rather
+    // than hardcoded — a coffee shop has no "baker". Only assignable roles
+    // count: 'shared' owns tasks and inventory but is nobody's job. The
+    // profiles trigger enforces this too; checking here gives a readable
+    // message instead of a raw constraint violation.
+    async function validJobRole(key: string): Promise<boolean> {
+      const { data, error } = await admin
+        .from("job_roles").select("key")
+        .eq("key", key).eq("assignable", true).eq("active", true).maybeSingle();
+      if (error) throw new Error("Couldn't check job roles: " + error.message);
+      return !!data;
+    }
+    async function jobRoleList(): Promise<string> {
+      const { data } = await admin.from("job_roles")
+        .select("key").eq("assignable", true).eq("active", true).order("sort_order");
+      return (data ?? []).map((r) => r.key).join(", ") || "(none configured)";
+    }
+
     // How many admins are there, not counting `excludeId`? Used to make sure
     // the last admin can never be demoted, deactivated, or deleted — which
     // would leave nobody able to administer the shop, recoverable only from
@@ -137,8 +153,8 @@ Deno.serve(async (req) => {
       if (role && !VALID_ROLES.includes(role)) {
         return json({ error: `Role must be one of: ${VALID_ROLES.join(", ")}.` }, 400);
       }
-      if (job_role && !VALID_JOB_ROLES.includes(job_role)) {
-        return json({ error: `Job must be one of: ${VALID_JOB_ROLES.join(", ")}.` }, 400);
+      if (job_role && !(await validJobRole(job_role))) {
+        return json({ error: `Job must be one of: ${await jobRoleList()}.` }, 400);
       }
       const { data: created, error } = await admin.auth.admin.createUser({
         email, password, email_confirm: true, user_metadata: { full_name },
@@ -189,8 +205,8 @@ Deno.serve(async (req) => {
     if (action === "set_job") {
       const { id, job_role } = body;
       if (!id) return json({ error: "Need id." }, 400);
-      if (job_role && !VALID_JOB_ROLES.includes(job_role)) {
-        return json({ error: `Job must be one of: ${VALID_JOB_ROLES.join(", ")}.` }, 400);
+      if (job_role && !(await validJobRole(job_role))) {
+        return json({ error: `Job must be one of: ${await jobRoleList()}.` }, 400);
       }
       const { error } = await admin.from("profiles")
         .update({ job_role: job_role || null }).eq("id", id);

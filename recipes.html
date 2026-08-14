@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipe Book</title>
-  <link rel="stylesheet" href="style.css?v=1786657839">
+  <link rel="stylesheet" href="style.css?v=1786667010">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading recipes…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1786657839"></script>
-  <script src="nav.js?v=1786657839"></script>
+  <script src="config.js?v=1786667010"></script>
+  <script src="nav.js?v=1786667010"></script>
   <script>
     let IS_ADMIN=false, CAN_EDIT=false, SEE_MONEY=false, RECIPES=[], INGREDIENTS=[], INV={}, OPTS={};
     let CATSET=new Set(), SORTBY="name", SEARCH="";
@@ -23,7 +23,10 @@
       const prof = await getMyProfile();
       IS_ADMIN = prof && prof.role==="admin";
       const jobRole = profileJobRole(prof);
-      CAN_EDIT = IS_ADMIN || jobRole==="baker";   // baker can edit recipes too
+      // Mirrors is_admin_or_baker() in the database, which since migration 002
+      // reads job_roles.can_edit_recipes rather than testing for "baker".
+      // This is only a UI hint — RLS is what actually enforces it.
+      CAN_EDIT = IS_ADMIN || !!(roleRow(jobRole) && roleRow(jobRole).can_edit_recipes);
       SEE_MONEY = IS_ADMIN;                         // money stays admin-only
       await renderTopbar("Recipe Book", prof);
       renderNav("recipes", IS_ADMIN);
@@ -34,8 +37,10 @@
       const [{data:recs},{data:ings},{data:inv},{data:opts}] = await Promise.all([
         sb.from("recipes").select("*").eq("active",true),
         sb.from("recipe_ingredients").select("*").order("sort_order"),
-        sb.from("inventory_items").select("name,current_on_hand,threshold,owner"),
+        sb.from("inventory_items").select("name,current_on_hand,threshold,owner,unit"),
         sb.from("recipe_options").select("*").order("sort_order"),
+        // Feeds unitKind() so amounts format by measurement type.
+        loadUnits(),
       ]);
       RECIPES = recs||[]; INGREDIENTS = ings||[];
       OPTS = {};
@@ -128,24 +133,141 @@
       el.innerHTML = list.map(recipeCard).join("");
     }
 
+    // ---------- scaling ----------
+    // SCALE holds the yield the user has dialled in, per recipe. View-only and
+    // never saved — it's a bench tool, not an edit to the recipe.
+    const SCALE = {};
+
+    function baseYield(r)   { return r.yield_qty != null ? Number(r.yield_qty) : null; }
+    function wantYield(r)   { return SCALE[r.id] != null ? SCALE[r.id] : baseYield(r); }
+    function scaleFactor(r) {
+      const base = baseYield(r), want = wantYield(r);
+      if (!base || base <= 0 || !want || want <= 0) return 1;
+      return want / base;
+    }
+    // Trim float noise so 24.000 reads as 24 in an input.
+    function formatNum(n){ return n == null ? "" : String(Math.round(Number(n)*1000)/1000); }
+
+    function ingredientRows(r, ings) {
+      const f = scaleFactor(r);
+      return ings.map(ing => {
+        const st = stockStatus(ing.ingredient);
+        const amt = ing.amount != null ? Number(ing.amount) * f : null;
+        // Formatted by what the unit IS: decimals for weight, fractions for
+        // volume, a whole-number suggestion for things you can't halve.
+        const q = amt != null ? formatQty(amt, ing.unit) : { text: "", note: "" };
+        const need = amt != null
+          ? `${esc(q.text)} ${esc(ing.unit||"")}${q.note
+              ? `<div class="stat-label" style="color:var(--honey);font-weight:700">${esc(q.note)}</div>` : ""}`
+          : esc(ing.unit||"—");
+        const have = st.have != null
+          ? `${esc(formatQty(st.have, st.unit).text)} ${esc(st.unit||"")}` : "—";
+        // Only compare when the units actually match — "2 cups" vs "5 lb" is
+        // not a shortage, it's a unit mismatch, and claiming otherwise is worse
+        // than staying quiet.
+        const short = amt != null && st.have != null && st.unit === ing.unit && st.have < amt - 1e-9;
+        const cost = ing.est_cost != null ? Number(ing.est_cost) * f : null;
+        return `<tr>
+          <td><span class="dot-tag" style="background:${short?'var(--berry)':st.color};display:inline-block;margin-right:6px"></span>${esc(ing.ingredient)}</td>
+          <td class="num"${short?' style="color:var(--berry);font-weight:700"':''}>${need}</td>
+          <td class="num" style="color:${short||st.color==='var(--berry)'?'var(--berry)':'inherit'}">${have}</td>
+          ${SEE_MONEY ? `<td class="num" style="color:var(--crust)">${cost!=null?"$"+cost.toFixed(2):""}</td>`:""}
+        </tr>`;
+      }).join("");
+    }
+
+    function scaleBar(r) {
+      const base = baseYield(r);
+      if (!base) {
+        return CAN_EDIT
+          ? `<div class="stat-label" style="margin-bottom:8px">No yield set, so this can't be scaled —
+               <button class="mini secondary" style="padding:2px 8px" data-action="edit-recipe"
+               data-id="${attr(r.id)}">add one</button></div>`
+          : `<div class="stat-label" style="margin-bottom:8px">No yield set yet, so this can't be scaled.</div>`;
+      }
+      const want = wantYield(r), f = scaleFactor(r), unit = r.yield_unit || "";
+      const scaled = Math.abs(f - 1) > 1e-9;
+      return `<div class="card" style="margin-bottom:10px;padding:10px 12px;background:#fbf7f0">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="stat-label" style="font-weight:700">Makes</span>
+          <button class="mini secondary" style="padding:4px 12px;font-size:18px;line-height:1"
+            data-action="scale-step" data-id="${attr(r.id)}" data-delta="-1" title="Less">−</button>
+          <input type="number" min="0" step="any" value="${attr(formatNum(want))}" data-input="scale-set"
+            data-id="${attr(r.id)}" style="width:76px;text-align:center;font-weight:700">
+          <button class="mini secondary" style="padding:4px 12px;font-size:18px;line-height:1"
+            data-action="scale-step" data-id="${attr(r.id)}" data-delta="1" title="More">+</button>
+          <span class="stat-label">${esc(unit)}</span>
+          <span style="flex:1"></span>
+          ${[["0.5","½×"],["2","2×"],["3","3×"]].map(([m,lab])=>
+            `<button class="mini secondary" style="padding:4px 10px" data-action="scale-mult"
+               data-id="${attr(r.id)}" data-mult="${m}">${lab}</button>`).join("")}
+          ${scaled?`<button class="mini" style="padding:4px 10px" data-action="scale-reset"
+               data-id="${attr(r.id)}">Reset</button>`:""}
+        </div>
+        ${scaled?`<div class="stat-label" style="margin-top:6px;color:var(--crust);font-weight:700">
+          Scaled ${esc(formatAmount(f))}× from ${esc(formatNum(base))} ${esc(unit)}.</div>`:""}
+      </div>`;
+    }
+
+    // Repaint one card in place. A full renderList() would collapse every open
+    // <details> — intolerable when you're mid-bake with one expanded.
+    function repaintScale(id, skipBar) {
+      const r = RECIPES.find(x => x.id === id);
+      if (!r) return;
+      const ings = INGREDIENTS.filter(i => i.recipe_id === r.id);
+      if (!skipBar) {
+        const bar = document.getElementById("scalebar-" + id);
+        if (bar) bar.innerHTML = scaleBar(r);
+      }
+      const body = document.getElementById("ingrows-" + id);
+      if (body) body.innerHTML = ingredientRows(r, ings);
+    }
+
+    function setScale(id, value, skipBar) {
+      const r = RECIPES.find(x => x.id === id);
+      if (!r) return;
+      const v = Number(value);
+      SCALE[id] = (!isFinite(v) || v <= 0) ? baseYield(r) : v;
+      repaintScale(id, skipBar);
+    }
+
+    onAction("scale-step", el => {
+      const id = Number(el.dataset.id);
+      const r = RECIPES.find(x => x.id === id);
+      if (!r) return;
+      // Always ±1. If you want 25 scones you should be able to ask for 25 —
+      // the yield is the thing you're choosing, so it shouldn't be the thing
+      // that's constrained. Whole-number handling belongs on the ingredients
+      // that genuinely can't be halved, and that's what formatQty() does.
+      setScale(id, (wantYield(r) || baseYield(r) || 1) + Number(el.dataset.delta));
+    });
+    onAction("scale-mult", el => {
+      const id = Number(el.dataset.id);
+      const r = RECIPES.find(x => x.id === id);
+      if (r) setScale(id, (baseYield(r) || 1) * Number(el.dataset.mult));
+    });
+    onAction("scale-reset", el => {
+      const id = Number(el.dataset.id);
+      delete SCALE[id];
+      repaintScale(id);
+    });
+    onInputAction("scale-set", el => {
+      // skipBar: rewriting the input being typed into would drop focus.
+      setScale(Number(el.dataset.id), el.value, true);
+    });
+    onAction("edit-recipe", el => openEditor(Number(el.dataset.id)));
+
     function recipeCard(r) {
       const ings = INGREDIENTS.filter(i => i.recipe_id===r.id);
       let total=0, hasCost=false;
-      const rows = ings.map(ing => {
-        const st = stockStatus(ing.ingredient);
-        if (ing.est_cost!=null){ total+=Number(ing.est_cost); hasCost=true; }
-        const need = ing.amount!=null ? `${Number(ing.amount)} ${esc(ing.unit||"")}` : esc(ing.unit||"—");
-        const have = st.have!=null ? `${Number(st.have)} ${esc(st.unit||"")}` : (st.label==="not tracked" ? "—" : "—");
-        return `<tr>
-          <td><span class="dot-tag" style="background:${st.color};display:inline-block;margin-right:6px"></span>${esc(ing.ingredient)}</td>
-          <td class="num">${need}</td>
-          <td class="num" style="color:${st.color==='var(--berry)'?'var(--berry)':'inherit'}">${have}</td>
-          ${SEE_MONEY ? `<td class="num" style="color:var(--crust)">${ing.est_cost!=null?"$"+Number(ing.est_cost).toFixed(2):""}</td>`:""}
-        </tr>`;
-      }).join("");
-      const ingTable = ings.length ? `<div style="overflow-x:auto"><table class="rpt">
-        <tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${SEE_MONEY?'<th class="num">Cost</th>':''}</tr>
-        ${rows}</table></div>` : '<div class="empty">No ingredients listed.</div>';
+      ings.forEach(ing => { if (ing.est_cost!=null){ total+=Number(ing.est_cost); hasCost=true; } });
+
+      const ingTable = ings.length
+        ? `<div id="scalebar-${attr(r.id)}">${scaleBar(r)}</div>
+           <div style="overflow-x:auto"><table class="rpt">
+           <thead><tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${SEE_MONEY?'<th class="num">Cost</th>':''}</tr></thead>
+           <tbody id="ingrows-${attr(r.id)}">${ingredientRows(r, ings)}</tbody></table></div>`
+        : '<div class="empty">No ingredients listed.</div>';
 
       return `<div class="wcard recipe-card" style="margin-bottom:12px">
         <details>
@@ -181,6 +303,18 @@
       overlay.innerHTML=`<div class="card" style="max-width:520px;width:100%;margin:20px 0">
         <h2 class="section" style="margin-top:0">${editing?"Edit":"Add"} recipe</h2>
         <div class="field"><label>Name</label><input type="text" id="rName" value="${attr(editing?editing.name:"")}"></div>
+        <div class="field"><label>Makes (yield)</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="number" min="0" step="any" id="rYieldQty" placeholder="24"
+              value="${attr(editing&&editing.yield_qty!=null?editing.yield_qty:"")}" style="width:100px">
+            <input type="text" id="rYieldUnit" placeholder="scones, loaves, dozen…"
+              value="${attr(editing?editing.yield_unit:"")}" style="flex:1;min-width:140px">
+          </div>
+          <div class="stat-label" style="margin-top:4px">
+            Needed to scale a batch, and to work out cost per item — without it the
+            suggested prices on the Planner stay blank.
+          </div>
+        </div>
         <div class="field"><label>Category (pick one or type a new type)</label>
           <input type="text" id="rCat" list="catList" value="${attr(editing?editing.category:"")}"
             style="font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);width:100%" placeholder="e.g. Bread, Drinks, Seasonal…">
@@ -220,6 +354,14 @@
       const directions=document.getElementById("rDir").value.trim()||null;
       const err=document.getElementById("rErr");
       if(!name){ err.textContent="Name is required."; return; }
+      const yq=document.getElementById("rYieldQty").value;
+      const yield_qty = yq==="" ? null : Number(yq);
+      const yield_unit = document.getElementById("rYieldUnit").value.trim()||null;
+      // recipes_yield_qty_positive would reject this anyway; catching it here
+      // gives a sentence instead of a constraint name.
+      if (yield_qty !== null && (!isFinite(yield_qty) || yield_qty <= 0)) {
+        err.textContent="Yield must be a number greater than zero, or left blank."; return;
+      }
       const rows=[...document.querySelectorAll("#ingRows > div")].map((row,idx)=>({
         ingredient:row.querySelector(".ri-name").value.trim(),
         amount:row.querySelector(".ri-amt").value===""?null:Number(row.querySelector(".ri-amt").value),
@@ -228,10 +370,13 @@
       })).filter(r=>r.ingredient);
       let recipeId=id;
       if(id){
-        await sb.from("recipes").update({name,category,directions}).eq("id",id);
+        const {error:upErr}=await sb.from("recipes")
+          .update({name,category,directions,yield_qty,yield_unit}).eq("id",id);
+        if(upErr){ err.textContent=upErr.message; return; }
         await sb.from("recipe_ingredients").delete().eq("recipe_id",id);
       } else {
-        const {data,error}=await sb.from("recipes").insert({name,category,directions}).select().single();
+        const {data,error}=await sb.from("recipes")
+          .insert({name,category,directions,yield_qty,yield_unit}).select().single();
         if(error){ err.textContent=error.message; return; }
         recipeId=data.id;
       }

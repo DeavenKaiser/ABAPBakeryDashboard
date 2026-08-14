@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=1786657839">
+  <link rel="stylesheet" href="style.css?v=1786667010">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading your day…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1786657839"></script>
-  <script src="nav.js?v=1786657839"></script>
+  <script src="config.js?v=1786667010"></script>
+  <script src="nav.js?v=1786667010"></script>
   <script>
     // ---------- state ----------
     let PROF=null, IS_ADMIN=false, MY_ROLE=null, DATA={};
@@ -189,9 +189,8 @@
       },
       countdown: () => {
         // Countdown to inventory day(s). Staff: their own. Admin: all roles that have one.
-        const dayName = d => ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d];
         function line(role){
-          const dow = ROLE_DUE_DOW[role];
+          const dow = roleDueDow(role);
           if (dow == null) return "";
           const { days } = taskDue(role, "weekly");
           const who = roleLabel(role);
@@ -203,10 +202,12 @@
         }
         let body;
         if (IS_ADMIN) {
-          body = ["baker","barista"].map(line).join("") || `<div class="empty">No inventory days set.</div>`;
-        } else if (MY_ROLE && ROLE_DUE_DOW[MY_ROLE] != null) {
+          // Every role that has a fixed inventory day, not a hardcoded pair.
+          body = assignableRoles().filter(r => r.due_dow != null).map(r => line(r.key)).join("")
+            || `<div class="empty">No inventory days set. Set them per role in job_roles.</div>`;
+        } else if (MY_ROLE && roleDueDow(MY_ROLE) != null) {
           const { days } = taskDue(MY_ROLE, "weekly");
-          const dow = ROLE_DUE_DOW[MY_ROLE];
+          const dow = roleDueDow(MY_ROLE);
           body = `<div class="stat-row"><div class="stat-big" style="font-size:38px">${days<=0?"Today":days}</div>
             <div class="stat-label">${days<=0?"is your inventory day!":`day${days===1?"":"s"} until ${dayName(dow)} inventory`}</div></div>`;
         } else {
@@ -217,11 +218,11 @@
       // ---- admin widgets ----
       team_completion: () => {
         let rows="";
-        [["baker","Baker"],["barista","Barista"],["cleaning","Cleaning"],["shared","Shared"]].forEach(([o,label])=>{
+        jobRoles().forEach(({ key:o, label })=>{
           const ts=roleTasks(o); if(!ts.length) return;
           const p=pctDone(ts), d=ts.filter(t=>DATA.done.has(t.id)).length;
           rows+=`<div style="margin-bottom:10px">
-            <div style="display:flex;justify-content:space-between;font-size:14px"><span>${label}</span><span class="stat-label">${d}/${ts.length} · ${p}%</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:14px"><span>${esc(label)}</span><span class="stat-label">${d}/${ts.length} · ${p}%</span></div>
             <div class="progress-wrap"><div class="progress-bar" style="width:${p}%"></div></div></div>`;
         });
         return { title:"Team completion", body: rows||`<div class="empty">No tasks.</div>` };

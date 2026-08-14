@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Inventory</title>
-  <link rel="stylesheet" href="style.css?v=1786657839">
+  <link rel="stylesheet" href="style.css?v=1786667010">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1786657839"></script>
-  <script src="nav.js?v=1786657839"></script>
+  <script src="config.js?v=1786667010"></script>
+  <script src="nav.js?v=1786667010"></script>
   <script>
     let ITEMS = [], STATUSSET = new Set(), TYPESET = new Set(), SORTBY = "category", IS_ADMIN = false, MY_ROLE = null, SCOPE = "mine";
 
@@ -147,8 +147,7 @@ function canEditCount(it) {
             <input type="text" id="niName" placeholder="Item name"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <select id="niOwner" style="font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
-              <option value="baker">Baker</option><option value="barista">Barista</option>
-              <option value="cleaning">Cleaning</option><option value="shared">Shared</option>
+              ${ownerKeys().map(k=>`<option value="${attr(k)}">${esc(roleLabel(k))}</option>`).join("")}
             </select>
             <input type="text" id="niCat" placeholder="Category" style="width:120px">
             <input type="text" id="niUnit" placeholder="Unit" style="width:90px">

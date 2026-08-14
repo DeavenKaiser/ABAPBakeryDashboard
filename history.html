@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>History</title>
+  <link rel="stylesheet" href="style.css?v=1786667010">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6B4F3A">
+</head>
+<body class="dash">
+  <div class="wrap" id="app"><div class="empty">Loading history…</div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1786667010"></script>
+  <script src="nav.js?v=1786667010"></script>
+  <script>
+    // ============================================================
+    // History — surfaces data the app has always collected but never showed.
+    //
+    //   inventory_history   written by the on_inventory_update trigger on every
+    //                       count change: value, who, and whether it was below
+    //                       threshold at the time. Nothing has ever read it.
+    //   shift_note_history  appended by mytasks.html on every note save.
+    //                       Also never read back.
+    //
+    // Built with h`` and onAction() rather than string concatenation and inline
+    // onclick, so this page already satisfies the strict CSP in
+    // docs/spec-csp-hardening.md and won't need converting later.
+    // ============================================================
+
+    let IS_ADMIN = false;
+    let TAB = "counts";
+    let COUNTS = [], NOTES = [];
+    let DAYS = 30, WHO = "", ITEM = "";
+    let LOAD_ERR = "";
+
+    (async () => {
+      if (!(await requireLogin())) return;
+      const prof = await getMyProfile();
+      if (!prof) return;
+      IS_ADMIN = prof.role === "admin";
+      await renderTopbar("History", prof);
+      renderNav("history", IS_ADMIN);
+      if (!IS_ADMIN) {
+        document.getElementById("app").innerHTML =
+          `<div class="card"><div class="empty">Admins only.</div></div>`;
+        return;
+      }
+      await load();
+    })();
+
+    function sinceISO(days) {
+      if (days === 0) return "1970-01-01T00:00:00Z";      // "all time"
+      const d = new Date();
+      d.setDate(d.getDate() - days);
+      return d.toISOString();
+    }
+
+    async function load() {
+      LOAD_ERR = "";
+      const since = sinceISO(DAYS);
+
+      // Explicit FK hints. There is only one foreign key to profiles from each
+      // table today, but naming it means this cannot silently break if another
+      // is added later — PostgREST would otherwise reject the ambiguous embed.
+      const [countsRes, notesRes] = await Promise.all([
+        sb.from("inventory_history")
+          .select("id,count_value,was_below,recorded_at," +
+                  "inventory_items(name,owner)," +
+                  "profiles!inventory_history_recorded_by_fkey(full_name)")
+          .gte("recorded_at", since)
+          .order("recorded_at", { ascending: false })
+          .limit(1000),
+        sb.from("shift_note_history")
+          .select("id,body,written_at," +
+                  "profiles!shift_note_history_written_by_fkey(full_name)")
+          .gte("written_at", since)
+          .order("written_at", { ascending: false })
+          .limit(300),
+      ]);
+
+      if (countsRes.error) LOAD_ERR = countsRes.error.message;
+      else if (notesRes.error) LOAD_ERR = notesRes.error.message;
+
+      COUNTS = countsRes.data || [];
+      NOTES = notesRes.data || [];
+      render();
+    }
+
+    // ---------- helpers ----------
+    const whoOf = r => (r.profiles && r.profiles.full_name) || "—";
+    const itemOf = r => (r.inventory_items && r.inventory_items.name) || "(deleted item)";
+    const ownerOf = r => (r.inventory_items && r.inventory_items.owner) || "";
+
+    function when(ts) {
+      const d = new Date(ts);
+      return d.toLocaleString(undefined, {
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+      });
+    }
+    function relative(ts) {
+      const mins = Math.round((Date.now() - new Date(ts)) / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return mins + "m ago";
+      const hrs = Math.round(mins / 60);
+      if (hrs < 24) return hrs + "h ago";
+      const days = Math.round(hrs / 24);
+      return days + "d ago";
+    }
+
+    function filtered() {
+      let rows = COUNTS;
+      if (WHO) rows = rows.filter(r => whoOf(r) === WHO);
+      if (ITEM) {
+        const q = ITEM.toLowerCase();
+        rows = rows.filter(r => itemOf(r).toLowerCase().includes(q));
+      }
+      return rows;
+    }
+
+    // ---------- render ----------
+    function render() {
+      const app = document.getElementById("app");
+      const rows = filtered();
+
+      const people = [...new Set(COUNTS.map(whoOf))].filter(n => n !== "—").sort();
+      const belowN = rows.filter(r => r.was_below).length;
+
+      const hero = h`<div class="hero" style="padding:18px 22px"><div>
+        <h1 style="font-size:22px">History</h1>
+        <div class="sub">Who counted what, and every shift note — going back as far as you ask</div>
+      </div></div>`;
+
+      const tabs = h`<div class="card" style="margin-bottom:12px"><div class="fs-bar">
+        <button class="${TAB === "counts" ? "" : "secondary"}" data-action="tab" data-tab="counts">
+          Inventory counts (${COUNTS.length})</button>
+        <button class="${TAB === "notes" ? "" : "secondary"}" data-action="tab" data-tab="notes">
+          Shift notes (${NOTES.length})</button>
+      </div></div>`;
+
+      const err = LOAD_ERR
+        ? h`<div class="card"><div class="error" style="min-height:auto">
+            Couldn't load history: ${LOAD_ERR}</div></div>`
+        : "";
+
+      // Controls render once; results render into #results. Keeping them
+      // separate is what lets the search box filter as you type — re-rendering
+      // the input the user is typing into would destroy it and drop focus.
+      app.innerHTML = String(h`${hero}${tabs}${err}${
+        TAB === "counts" ? countsControls(people) : notesControls()
+      }<div id="results"></div>`);
+
+      renderResults();
+    }
+
+    function renderResults() {
+      const box = document.getElementById("results");
+      if (!box) return;
+      box.innerHTML = String(TAB === "counts" ? countsResults(filtered()) : notesResults());
+    }
+
+    const RANGES = [[7, "7 days"], [30, "30 days"], [90, "90 days"], [0, "All"]];
+
+    function rangeButtons() {
+      return h`<div class="fs-bar" style="margin-bottom:8px">
+        ${RANGES.map(([d, label]) => h`<button class="${DAYS === d ? "" : "secondary"} mini"
+          data-action="range" data-days="${String(d)}">${label}</button>`)}
+      </div>`;
+    }
+
+    function countsControls(people) {
+      return h`<div class="card" style="margin-bottom:12px">
+        ${rangeButtons()}
+        <div class="fs-bar">
+          <input type="text" placeholder="Filter by item…" value="${attr(ITEM)}"
+            data-input="item-filter" style="flex:1;min-width:140px">
+          <select data-change="who-filter" style="font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--line)">
+            <option value="">Everyone</option>
+            ${people.map(p => h`<option value="${attr(p)}" ${WHO === p ? "selected" : ""}>${p}</option>`)}
+          </select>
+        </div>
+      </div>`;
+    }
+
+    function notesControls() {
+      return h`<div class="card" style="margin-bottom:12px">${rangeButtons()}</div>`;
+    }
+
+    function countsResults(rows) {
+      const belowN = rows.filter(r => r.was_below).length;
+
+      const stats = h`<div class="grid2" style="margin-bottom:12px">
+        <div class="card"><div class="muted">Counts recorded</div>
+          <div class="big-num">${rows.length}</div></div>
+        <div class="card"><div class="muted">Found below threshold</div>
+          <div class="big-num" style="color:${belowN ? "var(--berry)" : "inherit"}">${belowN}</div></div>
+      </div>`;
+
+      if (!rows.length) {
+        return h`${stats}<div class="card"><div class="empty">
+          ${COUNTS.length
+            ? "No counts match those filters."
+            : "No counts recorded in this period. Counts appear here automatically as the team updates inventory."}
+        </div></div>`;
+      }
+
+      const table = h`<div class="card" style="overflow-x:auto">
+        <table class="rpt">
+          <tr><th>When</th><th>Item</th><th class="num">Count</th><th>By</th></tr>
+          ${rows.map(r => h`<tr${r.was_below ? raw(' style="background:#fbeae7"') : ""}>
+            <td style="white-space:nowrap">${when(r.recorded_at)}
+              <div class="stat-label">${relative(r.recorded_at)}</div></td>
+            <td>${itemOf(r)}${ownerOf(r) ? h`<div class="stat-label">${roleLabel(ownerOf(r))}</div>` : ""}</td>
+            <td class="num">${r.count_value ?? "—"}${
+              r.was_below ? raw('<div class="stat-label" style="color:var(--berry);font-weight:700">below</div>') : ""}</td>
+            <td>${whoOf(r)}</td>
+          </tr>`)}
+        </table>
+      </div>`;
+
+      const capped = COUNTS.length >= 1000
+        ? h`<div class="card"><div class="stat-label">
+            Showing the most recent 1000 entries. Narrow the date range to see further back.</div></div>`
+        : "";
+
+      return h`${stats}${table}${capped}`;
+    }
+
+    function notesResults() {
+      if (!NOTES.length) {
+        return h`<div class="card"><div class="empty">
+          No shift notes in this period.<br>
+          <span class="stat-label">Notes saved on the Tasks screen are kept here for 30 days.</span>
+        </div></div>`;
+      }
+      return h`${NOTES.map(n => h`<div class="card" style="margin-bottom:8px">
+        <div class="stat-label" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span style="font-weight:700">${whoOf(n)}</span>
+          <span>${when(n.written_at)} · ${relative(n.written_at)}</span>
+        </div>
+        <div style="font-size:15px;line-height:1.45;white-space:pre-wrap;margin-top:6px">${n.body || ""}</div>
+      </div>`)}`;
+    }
+
+    // ---------- actions (delegated; no inline handlers on this page) ----------
+    onAction("tab",   el => { TAB = el.dataset.tab; render(); });
+    onAction("range", async el => { DAYS = Number(el.dataset.days); await load(); });
+    onChangeAction("who-filter", el => { WHO = el.value; render(); });
+    // Results only — re-rendering the whole page here would destroy the input
+    // being typed into and drop focus after the first character.
+    onInputAction("item-filter", el => { ITEM = el.value.trim(); renderResults(); });
+  </script>
+</body>
+</html>

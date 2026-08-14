@@ -102,10 +102,19 @@ function h(strings, ...values) {
 // list doesn't re-bind anything and large lists get cheaper, not dearer.
 // ============================================================
 
-const _actions = { click: Object.create(null), change: Object.create(null) };
+const _actions = {
+  click:  Object.create(null),
+  change: Object.create(null),
+  input:  Object.create(null),
+};
 
 function onAction(name, fn)       { _actions.click[name]  = fn; }
 function onChangeAction(name, fn) { _actions.change[name] = fn; }
+// `change` on a text input only fires on blur or Enter. Use this for
+// filter/search boxes that should react as the user types. Note that the
+// handler must NOT re-render the element it is reading from, or focus and
+// caret position are lost on every keystroke — re-render only the results.
+function onInputAction(name, fn)  { _actions.input[name]  = fn; }
 
 function _delegate(kind, attribute) {
   return function (event) {
@@ -121,6 +130,7 @@ function _delegate(kind, attribute) {
 
 document.addEventListener("click",  _delegate("click",  "data-action"));
 document.addEventListener("change", _delegate("change", "data-change"));
+document.addEventListener("input",  _delegate("input",  "data-input"));
 
 // ---- Helpers shared across pages ----
 
@@ -131,6 +141,10 @@ async function requireLogin() {
     window.location.href = "index.html";
     return null;
   }
+  // Job roles are needed synchronously by roleLabel() and friends all over the
+  // app. Fetching them here — before any page starts rendering — is what lets
+  // those accessors stay synchronous.
+  await Promise.all([loadJobRoles(), loadAppSettings()]);
   return session;
 }
 
@@ -181,11 +195,50 @@ async function signOut() {
   window.location.href = "index.html";
 }
 
-// ---- Auto-logout after 30 minutes of inactivity ----
+// ============================================================
+// Per-shop settings (app_settings table, migration 003)
+//
+// Loaded by requireLogin() alongside job roles. The defaults below are the
+// values that used to be hardcoded here, so a shop with no rows behaves
+// exactly as before.
+// ============================================================
+
+let _appSettings = null;
+
+async function loadAppSettings() {
+  if (_appSettings) return _appSettings;
+  const { data, error } = await sb.from("app_settings").select("key,value");
+  if (error) console.error("loadAppSettings:", error.message);
+  const map = {};
+  (data || []).forEach(r => { map[r.key] = r.value; });
+  _appSettings = map;
+  applyIdleSettings();
+  return _appSettings;
+}
+
+function appSetting(key, fallback) {
+  const v = _appSettings ? _appSettings[key] : undefined;
+  return (v === undefined || v === null) ? fallback : v;
+}
+
+// Timings the idle watchdogs read. `let`, not `const`, because the page starts
+// counting down before settings have been fetched — applyIdleSettings() then
+// updates them and restarts the timers in place.
+let IDLE_LOGOUT_MS = 30 * 60 * 1000;
+let IDLE_WARN_MS   = 60 * 1000;
+let EDIT_IDLE_MS   = 2 * 60 * 1000;
+let _restartIdleTimers = null;     // assigned by initIdleLogout below
+
+function applyIdleSettings() {
+  IDLE_LOGOUT_MS = Math.max(1, Number(appSetting("idle_logout_minutes", 30))) * 60 * 1000;
+  IDLE_WARN_MS   = Math.max(5, Number(appSetting("idle_warning_seconds", 60))) * 1000;
+  EDIT_IDLE_MS   = Math.max(1, Number(appSetting("edit_mode_timeout_minutes", 2))) * 60 * 1000;
+  if (_restartIdleTimers) _restartIdleTimers();
+}
+
+// ---- Auto-logout after a period of inactivity ----
 // Resets on any real user activity. Warns shortly before logging out.
 (function initIdleLogout(){
-  const IDLE_MS = 30 * 60 * 1000;      // 30 minutes
-  const WARN_MS = 60 * 1000;           // warn 1 minute before
   let idleTimer, warnTimer, warnEl;
 
   function doLogout(){
@@ -206,9 +259,11 @@ async function signOut() {
 
   function reset(){
     clearTimeout(idleTimer); clearTimeout(warnTimer); clearWarning();
-    warnTimer = setTimeout(showWarning, IDLE_MS - WARN_MS);
-    idleTimer = setTimeout(doLogout, IDLE_MS);
+    warnTimer = setTimeout(showWarning, Math.max(0, IDLE_LOGOUT_MS - IDLE_WARN_MS));
+    idleTimer = setTimeout(doLogout, IDLE_LOGOUT_MS);
   }
+  // Let applyIdleSettings() restart these once the real timings are known.
+  _restartIdleTimers = reset;
 
   let lastReset = 0;
   function onActivity(){
@@ -227,21 +282,70 @@ async function signOut() {
   else reset();
 })();
 
-// Job-role vocabulary shared across screens.
-const ROLES = ["baker", "barista", "cleaning"];
-const JOB_ROLES = ROLES;  // alias
-const ROLE_LABEL = { baker: "Baker", barista: "Barista", cleaning: "Cleaning", shared: "Shared" };
-function roleLabel(r) { return ROLE_LABEL[r] || (r ? r.charAt(0).toUpperCase() + r.slice(1) : "—"); }
+// ============================================================
+// Job roles — loaded from the job_roles table, not hardcoded.
+//
+// These used to be three literals ("baker", "barista", "cleaning") plus a
+// fallback that matched employee names. That worked for one bakery and makes
+// no sense for a coffee shop. Migration 002 moved them into the database and
+// backfilled the name matching as a one-time data fix.
+//
+// The table is fetched ONCE by requireLogin(), before any page renders, so
+// every accessor below stays synchronous and the 20-odd existing call sites
+// did not have to become async.
+// ============================================================
 
-// Which task-set does this profile own? Prefer explicit job_role; fall back to name.
+let _jobRoles = null;
+
+async function loadJobRoles() {
+  if (_jobRoles) return _jobRoles;
+  const { data, error } = await sb.from("job_roles")
+    .select("*").eq("active", true).order("sort_order");
+  if (error) {
+    // Don't leave the app in a half-rendered state if this one query fails —
+    // an empty list degrades to raw keys rather than throwing.
+    console.error("loadJobRoles:", error.message);
+    _jobRoles = [];
+  } else {
+    _jobRoles = data || [];
+  }
+  return _jobRoles;
+}
+
+// All roles including 'shared'. Use for task/inventory ownership.
+function jobRoles() { return _jobRoles || []; }
+
+// Roles a person can actually hold — excludes 'shared'.
+function assignableRoles() { return jobRoles().filter(r => r.assignable); }
+
+// Key arrays, replacing the old `ROLES` constant.
+function roleKeys()  { return assignableRoles().map(r => r.key); }
+function ownerKeys() { return jobRoles().map(r => r.key); }
+
+function roleRow(key) { return jobRoles().find(r => r.key === key) || null; }
+
+// Falls back to title-casing the key so an unknown value still reads sensibly
+// rather than rendering blank.
+function roleLabel(key) {
+  const r = roleRow(key);
+  if (r) return r.label;
+  return key ? key.charAt(0).toUpperCase() + key.slice(1) : "—";
+}
+
+// Day of week this role counts inventory, or null for "use the frequency".
+function roleDueDow(key) {
+  const r = roleRow(key);
+  return r && r.due_dow != null ? r.due_dow : null;
+}
+
+const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+function dayName(dow) { return DAY_NAMES[dow] ?? ""; }
+
+// Which task-set does this profile own?
+// The name-matching fallback that used to live here was backfilled into the
+// data by migration 002 — see that file if a staff member's list looks empty.
 function profileJobRole(prof) {
-  if (!prof) return null;
-  if (prof.job_role) return prof.job_role;
-  const n = (prof.full_name || "").toLowerCase();
-  if (n.includes("sierra")) return "baker";
-  if (n.includes("mackenzie") || n.includes("kenzie")) return "barista";
-  if (n.includes("marilyn")) return "cleaning";
-  return null;
+  return (prof && prof.job_role) || null;
 }
 
 // ---- Admin edit mode (off by default; per-session, per-tab) ----
@@ -254,7 +358,6 @@ function setEditMode(on) {
 // Edit mode auto-reverts to view-only after 2 minutes of inactivity, so an
 // admin who walks away can't leave the app in an editable state.
 let _editIdleTimer = null, _editLastActivity = 0;
-const EDIT_IDLE_MS = 2 * 60 * 1000;
 function startEditModeTimeout() {
   stopEditModeTimeout();
   _editLastActivity = Date.now();
@@ -304,11 +407,9 @@ async function nameForRole(role) {
 }
 
 // ---- Task due dates & countdowns ----
-// Per-role inventory/task due days:
-//   Baker (Sierra) → Wednesday, Barista (Mackenzie) → Saturday.
-//   Cleaning (Marilyn) → by frequency (daily = today, weekly = end of week,
-//   monthly = end of month). Shared shift = today.
-const ROLE_DUE_DOW = { baker: 3, barista: 6 }; // 0=Sun..6=Sat
+// A role's inventory day now comes from job_roles.due_dow (migration 002).
+// Roles with no fixed day fall back to the task's frequency: daily = today,
+// weekly = end of week, monthly = end of month. Shared shift = today.
 
 function nextDowDate(dow) {
   const now = new Date();
@@ -334,7 +435,8 @@ function taskDue(owner, frequency) {
   let due;
   if (frequency === "monthly") due = endOfMonth();
   else if (frequency === "weekly") {
-    if (ROLE_DUE_DOW[owner] != null) due = nextDowDate(ROLE_DUE_DOW[owner]);
+    const dow = roleDueDow(owner);
+    if (dow != null) due = nextDowDate(dow);
     else due = endOfWeek();
   } else {
     due = endOfToday();
@@ -353,6 +455,113 @@ function countdownLabel(days) {
   if (days <= 0) return "due today";
   if (days === 1) return "due tomorrow";
   return `${days} days`;
+}
+
+// ---- Kitchen-friendly amounts ----
+// Scaling produces numbers like 0.375 or 2.6666667. Nobody measures those.
+// Snap to the fractions a kitchen actually has spoons and cups for, and fall
+// back to a rounded decimal when the value isn't near one — better an honest
+// "2.67" than a confidently wrong "2 2/3" on something that needs precision.
+const KITCHEN_FRACTIONS = [
+  [1,8],[1,6],[1,5],[1,4],[1,3],[3,8],[2,5],[1,2],
+  [3,5],[5,8],[2,3],[3,4],[4,5],[5,6],[7,8],
+];
+
+function formatAmount(n) {
+  if (n == null || n === "" || !isFinite(Number(n))) return "";
+  const v = Number(n);
+  if (v === 0) return "0";
+  const sign = v < 0 ? "-" : "";
+  const abs = Math.abs(v);
+  const whole = Math.floor(abs);
+  const frac = abs - whole;
+
+  if (frac < 0.02) return sign + String(whole);
+
+  let best = null, bestErr = Infinity;
+  for (const [num, den] of KITCHEN_FRACTIONS) {
+    const err = Math.abs(frac - num / den);
+    if (err < bestErr) { bestErr = err; best = [num, den]; }
+  }
+  // More than ~2.5% off the nearest usable fraction: show a decimal instead.
+  if (bestErr > 0.025) {
+    const dec = abs < 10 ? Math.round(abs * 100) / 100 : Math.round(abs * 10) / 10;
+    return sign + String(dec);
+  }
+  const [num, den] = best;
+  return sign + (whole ? whole + " " : "") + num + "/" + den;
+}
+
+// ---- Measurement-aware quantities ----
+// A pound and a teaspoon do not want the same treatment:
+//   weight  measured on a scale — decimals are natural and precise.
+//           "1.33 lb" is easier to act on than "1 1/3 lb".
+//   volume  measured with spoons and cups — fractions are the real form.
+//           "3/8 tsp" beats "0.375 tsp".
+//   count   whole things. You can't use 4.5 eggs, so say what it rounds to
+//           and let the baker decide rather than silently rounding.
+//
+// units.kind is the source of truth. But recipe_ingredients.unit is free text,
+// so real data contains "Tbsp", "tablespoon", "eggs" — none guaranteed to
+// match a units.code. Hence the fallback word list.
+
+let _units = null;
+
+async function loadUnits() {
+  if (_units) return _units;
+  const { data, error } = await sb.from("units")
+    .select("code,label,kind,to_base,is_pack").eq("active", true);
+  if (error) { console.error("loadUnits:", error.message); _units = []; }
+  else _units = data || [];
+  return _units;
+}
+
+function unitInfo(code) {
+  if (!code) return null;
+  const c = String(code).trim().toLowerCase();
+  const list = _units || [];
+  return list.find(u => (u.code || "").toLowerCase() === c)
+      || list.find(u => (u.label || "").toLowerCase() === c)
+      || null;
+}
+
+const UNIT_KIND_HINTS = {
+  weight: ["lb","lbs","pound","pounds","oz","ounce","ounces","g","gram","grams","kg","kilo","kilogram","kilograms"],
+  volume: ["tsp","teaspoon","teaspoons","tbsp","tablespoon","tablespoons","cup","cups","ml","l","liter","litre","liters","litres","fl oz","floz","fluid ounce","pint","pints","quart","quarts","gal","gallon","gallons"],
+  count:  ["each","ea","egg","eggs","dozen","doz","piece","pieces","sheet","sheets","loaf","loaves","pan","pans","unit","units","clove","cloves"],
+};
+
+function unitKind(code) {
+  const info = unitInfo(code);
+  if (info && info.kind) return info.kind;
+  const c = String(code || "").trim().toLowerCase();
+  if (!c) return "unknown";
+  for (const kind of Object.keys(UNIT_KIND_HINTS)) {
+    if (UNIT_KIND_HINTS[kind].includes(c)) return kind;
+  }
+  return "unknown";
+}
+
+// Returns { text, note }. `note` is a short hint shown under the amount —
+// currently only used to suggest a whole number for count units.
+function formatQty(n, unitCode) {
+  if (n == null || n === "" || !isFinite(Number(n))) return { text: "", note: "" };
+  const v = Number(n);
+  const kind = unitKind(unitCode);
+
+  if (kind === "weight") {
+    const dec = Math.abs(v) < 10 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10;
+    return { text: String(dec), note: "" };
+  }
+
+  if (kind === "count") {
+    const rounded = Math.max(1, Math.round(v));
+    const isWhole = Math.abs(v - Math.round(v)) < 1e-9;
+    return { text: formatAmount(v), note: isWhole ? "" : `use ${rounded}` };
+  }
+
+  // volume, packs, and anything unrecognised → kitchen fractions
+  return { text: formatAmount(v), note: "" };
 }
 
 // Shared: is an item below its threshold? (single source of truth)
