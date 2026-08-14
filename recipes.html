@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipe Book</title>
-  <link rel="stylesheet" href="style.css?v=1786667010">
+  <link rel="stylesheet" href="style.css?v=1786725004">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6B4F3A">
 </head>
@@ -12,8 +12,8 @@
   <div class="wrap" id="app"><div class="empty">Loading recipes…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1786667010"></script>
-  <script src="nav.js?v=1786667010"></script>
+  <script src="config.js?v=1786725004"></script>
+  <script src="nav.js?v=1786725004"></script>
   <script>
     let IS_ADMIN=false, CAN_EDIT=false, SEE_MONEY=false, RECIPES=[], INGREDIENTS=[], INV={}, OPTS={};
     let CATSET=new Set(), SORTBY="name", SEARCH="";
@@ -323,7 +323,12 @@
           </datalist></div>
         <label class="stat-label">Ingredients</label>
         <div id="ingRows"></div>
+        ${inventoryDatalist()}
         <button class="mini secondary" style="margin-top:8px" onclick="addIngRow()">+ Add ingredient</button>
+        <div class="stat-label" style="margin-top:4px">
+          Start typing to pick from inventory — <span style="color:var(--sage)">●</span> means it's tracked,
+          so the recipe can show stock and warn when you're short.
+        </div>
         <div class="field" style="margin-top:12px"><label>Directions</label>
           <textarea id="rDir" style="width:100%;min-height:100px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:inherit;font-size:15px" placeholder="Step-by-step directions…">${esc(editing?editing.directions:"")}</textarea></div>
         <div class="error" id="rErr" style="min-height:auto;margin-top:10px"></div>
@@ -337,17 +342,65 @@
       window.__ingWrap=wrap;
       if(ings.length) ings.forEach(i=>addIngRow(i)); else addIngRow();
     }
+    // Ingredient names suggested from inventory, but NOT restricted to it —
+    // recipes legitimately use things you don't stock (water, a garnish, an
+    // item added to inventory later). A datalist suggests without trapping.
+    //
+    // Matching an inventory item matters for more than convenience: the
+    // shortage check in ingredientRows() only compares when the units are the
+    // same, so picking the item and inheriting its unit is what makes "Have"
+    // and the low-stock warning work at all.
+    function inventoryDatalist(){
+      const items = Object.values(INV)
+        .filter(i => i && i.name)
+        .sort((a,b) => a.name.localeCompare(b.name));
+      return `<datalist id="ingOptions">${items.map(i =>
+        `<option value="${attr(i.name)}">${esc([roleLabel(i.owner), i.unit].filter(Boolean).join(" · "))}</option>`
+      ).join("")}</datalist>`;
+    }
+
     function addIngRow(data){
       const wrap=window.__ingWrap; if(!wrap) return;
       const row=document.createElement("div");
-      row.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+      row.style.cssText="display:flex;gap:6px;margin-bottom:6px;align-items:center";
       row.innerHTML=`
-        <input type="text" placeholder="ingredient" class="ri-name" value="${attr(data?data.ingredient:"")}" style="flex:2">
+        <input type="text" placeholder="ingredient" class="ri-name" list="ingOptions"
+          value="${attr(data?data.ingredient:"")}" style="flex:2" data-change="ing-pick">
         <input type="number" step="any" placeholder="amt" class="ri-amt" value="${data&&data.amount!=null?data.amount:""}" style="flex:1">
         <input type="text" placeholder="unit" class="ri-unit" value="${attr(data?data.unit:"")}" style="width:60px">
+        <span class="ri-flag stat-label" style="width:18px;text-align:center" title=""></span>
         <button class="mini secondary" style="padding:4px 8px" onclick="this.parentElement.remove()">✕</button>`;
       wrap.appendChild(row);
+      markIngRow(row);
     }
+
+    // Show whether this ingredient is tracked in inventory. A recipe whose
+    // ingredients aren't linked can't show Have, can't warn about shortages,
+    // and won't contribute to the projection — worth saying so at entry time
+    // rather than leaving someone to wonder why the dots are all grey.
+    function markIngRow(row){
+      const nameEl = row.querySelector(".ri-name");
+      const flag = row.querySelector(".ri-flag");
+      if (!nameEl || !flag) return;
+      const key = (nameEl.value||"").toLowerCase().trim();
+      const hit = key ? INV[key] : null;
+      if (!key)      { flag.textContent = "";  flag.title = ""; }
+      else if (hit)  { flag.textContent = "●"; flag.style.color = "var(--sage)";
+                       flag.title = "Tracked in inventory — stock levels and shortages will show."; }
+      else           { flag.textContent = "○"; flag.style.color = "#b0a48f";
+                       flag.title = "Not in inventory. Fine, but this one won't show stock levels."; }
+    }
+
+    onChangeAction("ing-pick", el => {
+      const row = el.closest("div");
+      const hit = INV[(el.value||"").toLowerCase().trim()];
+      // Only fill a unit that's empty — never overwrite what someone typed.
+      if (hit && hit.unit) {
+        const unitEl = row && row.querySelector(".ri-unit");
+        if (unitEl && !unitEl.value.trim()) unitEl.value = hit.unit;
+      }
+      if (row) markIngRow(row);
+    });
     async function saveRecipe(id){
       const name=document.getElementById("rName").value.trim();
       const category=document.getElementById("rCat").value;
