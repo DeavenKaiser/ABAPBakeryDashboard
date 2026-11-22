@@ -1,0 +1,60 @@
+# abap-db: runs against ABAP's LIVE production database.
+# Only the owner runs this workflow (Actions -> abap-db -> Run workflow).
+# It uses the repo secret ABAP_DB_URL. Nobody else should trigger it.
+#   dump             read-only: dumps the public schema (structure only) plus
+#                    auth/storage/realtime extras, uploaded as artifact "abap-schema"
+#   repair-baseline  marks the baseline migration as applied in migration history
+#                    (no schema change)
+#   push             applies pending migrations in supabase/migrations
+name: abap-db
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to run against ABAP's database"
+        type: choice
+        required: true
+        options:
+          - dump
+          - repair-baseline
+          - push
+
+permissions:
+  contents: read
+
+jobs:
+  abap-db:
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.ABAP_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.2.0
+
+      - name: Dump schema (structure only)
+        if: ${{ inputs.action == 'dump' }}
+        run: |
+          supabase db dump --db-url "$DB_URL" --schema public -f public.sql
+          psql "$DB_URL" -At -f supabase/audit/extra-objects.sql > extra-objects.sql
+
+      - name: Upload dump
+        if: ${{ inputs.action == 'dump' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: abap-schema
+          path: |
+            public.sql
+            extra-objects.sql
+          if-no-files-found: error
+
+      - name: Repair baseline migration history
+        if: ${{ inputs.action == 'repair-baseline' }}
+        run: supabase migration repair 20261122000000 --status applied --db-url "$DB_URL"
+
+      - name: Push migrations
+        if: ${{ inputs.action == 'push' }}
+        run: supabase db push --db-url "$DB_URL"
