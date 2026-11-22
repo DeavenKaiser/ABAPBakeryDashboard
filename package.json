@@ -5,6 +5,7 @@
   "description": "Local development setup for the ABAP Bakery Dashboard static site",
   "scripts": {
     "start": "python3 -m http.server 8000",
-    "dev": "python3 -m http.server 8000"
+    "dev": "python3 -m http.server 8000",
+    "build": "bash scripts/build-legacy.sh"
   }
 }
