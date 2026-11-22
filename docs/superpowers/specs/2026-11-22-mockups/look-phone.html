@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en" class="lay-f">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup 2c · Dark and light</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --brand: #6B4F3A; --onbrand: #FBF7F0; }
+  /* Dark: F's dark kitchen in E's warm colors (unchanged from mockup 2b). */
+  .mode-dark {
+    --bg: #17120F; --card: #241C17; --card2: #2F261F; --ink: #F4ECE0; --muted: #A8998A;
+    --rule: #3A2F27; --cardline: transparent; --navbg: #1D1713;
+    --red: #FF8A7A; --redbg: #3D201B; --amber: #F2B84B;
+    --sel-bg: var(--hi); --sel-fg: #17120F; --avbg: #2F261F; --avfg: #A8998A;
+    --tint: color-mix(in srgb, var(--hi) 16%, var(--card));
+  }
+  /* Light: E's paper. Cards are paper with thin rules, not white boxes. */
+  .mode-light {
+    --bg: #FBF7F0; --card: #FBF7F0; --card2: #F3ECE0; --ink: #2A2420; --muted: #75685A;
+    --rule: #E6DCCB; --cardline: #E6DCCB; --navbg: #FBF7F0;
+    --red: #B4382B; --redbg: #F6E0DA; --amber: #8A5D00;
+    --sel-bg: var(--brand); --sel-fg: #FBF7F0; --avbg: #EFE7DA; --avfg: #5A4A3A;
+    --tint: color-mix(in srgb, var(--brand) 11%, var(--bg));
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #E6E7EA; color: #1d1d1f; }
+  .page { max-width: 1060px; margin: 0 auto; padding: 20px 16px 48px; }
+  .page h1 { font-size: 20px; margin: 0 0 4px; }
+  .q { color: #555; font-size: 14px; margin: 0 0 16px; line-height: 1.45; max-width: 800px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; margin-bottom: 6px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px #ccc; cursor: pointer; padding: 0; }
+  .sw.on { box-shadow: 0 0 0 2px #1d1d1f; }
+  .toggles { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tg { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
+  .tg.on { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+  .swname { font-size: 13px; color: #555; margin: 8px 0 2px; min-height: 18px; }
+  .contrast { font-size: 12.5px; color: #555; margin: 0 0 6px; line-height: 1.45; }
+  .modeh { font-size: 16px; margin: 34px 0 14px; }
+  .modeh span { font-weight: 500; color: #666; font-size: 14px; margin-left: 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 26px; justify-content: center; }
+  .note { text-align: center; font-size: 13px; color: #666; margin-top: 30px; }
+
+  .phone { width: 300px; height: 620px; border-radius: 36px; background: #000; padding: 9px; box-shadow: 0 12px 30px rgba(0,0,0,.2); }
+  .screen { width: 100%; height: 100%; border-radius: 28px; overflow: hidden; display: flex; flex-direction: column; font-size: 13px; background: var(--bg); color: var(--ink); }
+  .scroll { flex: 1; overflow: hidden; }
+  html.lay-f .only-d, html:not(.lay-f) .only-f { display: none; }
+  svg.i { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .ring { transform: rotate(-90deg); flex: none; }
+  .ring circle { fill: none; stroke-width: 9; }
+  .ring .arc { stroke-linecap: round; stroke-dasharray: 149.5 213.6; }
+
+  .hf { font-weight: 800; letter-spacing: -.02em; }
+  html.serif .hf { font-family: Fraunces, Georgia, serif; font-weight: 700; letter-spacing: -.01em; }
+
+  .bar { display: flex; align-items: center; gap: 9px; padding: 14px 16px 8px; }
+  .badge { width: 34px; height: 34px; border-radius: 10px; background: #FBF7F0; display: grid; place-items: center; flex: none; }
+  .mark { width: 26px; height: 26px; border-radius: 50%; background: #23324A; color: #E8C77A; font-family: Fraunces, Georgia, serif; font-style: italic; font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+  .shop { font-weight: 700; font-size: 14px; flex: 1; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--avbg); color: var(--avfg); flex: none; }
+
+  .title { padding: 2px 16px 12px; font-size: 22px; }
+  .hello { padding: 2px 16px 10px; }
+  .hello .title { padding: 0; }
+  .date { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .card, .stat, .tile, .item, .task, .chip, .seg { border: 1px solid var(--cardline); }
+  .card { background: var(--card); border-radius: 18px; margin: 0 12px 10px; padding: 12px 14px; }
+  .t { font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--hi); text-transform: uppercase; margin-bottom: 8px; }
+
+  .hero { margin: 0 12px 10px; border-radius: 22px; background: var(--brand); color: var(--onbrand); padding: 16px; display: flex; gap: 14px; align-items: center; }
+  .hero .trk { stroke: rgba(255,255,255,.25); } .hero .arc { stroke: #fff; }
+  .hero .n { font-size: 26px; line-height: 1; }
+  .hero .s { font-size: 12px; opacity: .85; margin-top: 5px; line-height: 1.35; }
+  .hero .go, .hero .due { display: inline-block; background: rgba(255,255,255,.2); padding: 5px 11px; border-radius: 99px; font-weight: 700; font-size: 12px; }
+  .hero .go { margin-top: 9px; }
+  .hero.col { flex-direction: column; align-items: stretch; gap: 0; }
+  .hero .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .meter { height: 10px; border-radius: 99px; background: rgba(255,255,255,.25); margin-top: 12px; overflow: hidden; }
+  .meter div { height: 100%; border-radius: 99px; background: #fff; }
+  .cardhero, html.lay-f .hero.follow { background: var(--card); color: var(--ink); border: 1px solid var(--cardline); }
+  .cardhero .trk, html.lay-f .hero.follow .trk { stroke: var(--rule); }
+  .cardhero .arc, html.lay-f .hero.follow .arc { stroke: var(--hi); }
+  .cardhero .s, html.lay-f .hero.follow .s { color: var(--muted); opacity: 1; }
+  .cardhero .go, .cardhero .due, html.lay-f .hero.follow .go, html.lay-f .hero.follow .due { background: var(--tint); color: var(--hi); }
+  html.lay-f .hero.follow .meter { background: var(--rule); }
+  html.lay-f .hero.follow .meter div { background: var(--hi); }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 12px 10px; }
+  .stat { background: var(--card); border-radius: 18px; padding: 10px 14px; }
+  .stat .n { font-size: 28px; line-height: 1.1; }
+  .stat .n.r { color: var(--red); } .stat .n.a { color: var(--amber); }
+  .stat .s { color: var(--muted); font-size: 11.5px; }
+  .li { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+  .li .m { flex: 1; font-weight: 600; } .li .s { color: var(--muted); font-size: 11.5px; }
+  .chipic { width: 30px; height: 30px; border-radius: 10px; background: var(--tint); display: grid; place-items: center; color: var(--hi); flex: none; }
+  .chipic svg.i { width: 17px; height: 17px; }
+  .quote { border-left: 3px solid var(--hi); padding: 1px 0 1px 12px; font-family: Fraunces, Georgia, serif; font-style: italic; font-size: 14.5px; line-height: 1.35; }
+  .quote small { display: block; font-family: Inter, sans-serif; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 12px; }
+  .tile { background: var(--card); border-radius: 20px; padding: 13px; min-height: 108px; display: flex; flex-direction: column; }
+  .tile .ic { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--tint); color: var(--hi); margin-bottom: auto; }
+  .tile.warn .ic { background: var(--redbg); color: var(--red); }
+  .tile b { font-size: 14px; margin-top: 10px; }
+  .tile span { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .chips { display: flex; gap: 6px; padding: 0 12px 10px; overflow: hidden; }
+  .chip { flex: none; padding: 7px 12px; border-radius: 99px; background: var(--card); font-weight: 600; font-size: 12px; color: var(--muted); }
+  .chip.on { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
+  .list { margin: 0 12px; display: flex; flex-direction: column; gap: 8px; }
+  .item, .task { background: var(--card); border-radius: 18px; display: flex; align-items: center; gap: 10px; }
+  .item { padding: 9px 9px 9px 14px; }
+  .nm { flex: 1; min-width: 0; }
+  .nm b { display: block; font-size: 13.5px; }
+  .nm .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .tag { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 99px; margin-left: 4px; vertical-align: 1px; }
+  .tag.low { background: var(--redbg); color: var(--red); }
+  .tag.next { background: var(--tint); color: var(--hi); }
+  .step { display: flex; align-items: center; gap: 3px; }
+  .step button { width: 36px; height: 36px; border-radius: 12px; border: 0; background: var(--tint); color: var(--hi); font-size: 19px; font-weight: 700; font-family: inherit; padding: 0; }
+  .step .v { width: 40px; text-align: center; font-weight: 800; font-size: 16px; line-height: 1.1; }
+  .step .v small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); }
+  .item.todo .v { color: var(--muted); opacity: .6; }
+  .item.todo .nm .sub { color: var(--amber); font-weight: 600; }
+
+  .seg { display: flex; background: var(--card); border-radius: 14px; padding: 4px; margin: 0 12px 10px; }
+  .seg span { flex: 1; text-align: center; padding: 7px 0; border-radius: 10px; font-weight: 700; font-size: 12px; color: var(--muted); }
+  .seg span.on { background: var(--sel-bg); color: var(--sel-fg); }
+  .task { padding: 12px 14px; gap: 12px; }
+  .ck { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid var(--rule); flex: none; display: grid; place-items: center; }
+  .mode-light .ck { border-color: #D3C5AE; }
+  .ck svg.i { width: 16px; height: 16px; stroke-width: 3; }
+  .task.done .ck { background: var(--sel-bg); border-color: var(--sel-bg); color: var(--sel-fg); }
+  .task.done .nm b { color: var(--muted); text-decoration: line-through; font-weight: 600; }
+  .task .due { font-size: 11px; font-weight: 700; color: var(--red); flex: none; }
+  .label { font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin: 6px 4px 0; }
+
+  .nav { display: flex; justify-content: space-around; padding: 8px 6px 14px; background: var(--navbg); border-top: 1px solid var(--rule); }
+  .nav a { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; text-decoration: none; font-weight: 600; width: 52px; color: var(--muted); }
+  .nav a.on { color: var(--hi); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Mockup 2c · Dark mode and light mode</h1>
+  <p class="q">Dark mode is the warm dark kitchen you liked. Light mode uses E's editorial colors: cream paper, dark brown ink,
+    thin rule lines around cards instead of white boxes, and the shop color for headings, accents and the shift-note rule.
+    Same three screens in both. Names, logo, data and labels are stand-ins.</p>
+
+  <div class="controls">
+    <div class="swatches" id="sw"></div>
+    <div class="toggles">
+      <button class="tg on" id="tgF">Home: ring &amp; stats (F)</button>
+      <button class="tg" id="tgD">Home: bold tiles (D)</button>
+      <button class="tg" id="tgSerif">Serif headlines (from E)</button>
+    </div>
+  </div>
+  <div class="swname" id="swname"></div>
+  <div class="contrast" id="contrast"></div>
+
+  <h3 class="modeh">Dark mode <span>F's dark kitchen in E's warm colors</span></h3>
+  <div class="row mode-dark" id="rowDark"></div>
+
+  <h3 class="modeh">Light mode <span>E's paper colors</span></h3>
+  <div class="row mode-light" id="rowLight"></div>
+
+  <div class="note">Tell me in chat what you think. I can see which colors and switches you picked here too.</div>
+</div>
+
+<template id="screens">
+  <!-- Home -->
+  <div class="phone"><div class="screen">
+    <div class="bar"><div class="badge"><div class="mark">S</div></div><div class="shop">[Shop Name]</div><div class="avatar">SK</div></div>
+    <div class="scroll only-f">
+      <div class="hello"><div class="title hf">Good morning, Sam</div><div class="date">Tuesday, Nov 18 · Opening shift</div></div>
+      <div class="hero cardhero">
+        <svg width="60" height="60" viewBox="0 0 80 80" class="ring"><circle class="trk" cx="40" cy="40" r="34"/><circle class="arc" cx="40" cy="40" r="34"/></svg>
+        <div><div class="n hf">7 / 10</div><div class="s">Opening checklist · 3 left<br>Next: wipe pastry case</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n r hf">3</div><div class="s">low on stock</div></div>
+        <div class="stat"><div class="n a hf">2</div><div class="s">not counted</div></div>
+      </div>
+      <div class="card">
+        <div class="t">Today</div>
+        <div class="li"><span class="chipic" data-i="cal"></span><span class="m">Catering pickup</span><span class="s">2:00 pm</span></div>
+        <div class="li"><span class="chipic" data-i="box"></span><span class="m">Inventory count</span><span class="s">Wed</span></div>
+      </div>
+      <div class="card">
+        <div class="t">Shift note</div>
+        <div class="quote">“Oven 2 runs hot. Rotate the trays at ten minutes.”<small>Jordan · last night's close</small></div>
+      </div>
+    </div>
+    <div class="scroll only-d">
+      <div class="title hf">Morning, Sam 👋</div>
+      <div class="hero">
+        <svg width="74" height="74" viewBox="0 0 80 80" class="ring"><circle class="trk" cx="40" cy="40" r="34"/><circle class="arc" cx="40" cy="40" r="34"/></svg>
+        <div><div class="n hf">7 / 10</div><div class="s">Opening checklist · 3 left<br>Next: wipe pastry case</div><div class="go">Open tasks →</div></div>
+      </div>
+      <div class="grid">
+        <div class="tile"><div class="ic" data-i="box"></div><b>Count inventory</b><span>Due Wednesday</span></div>
+        <div class="tile warn"><div class="ic" data-i="alert"></div><b>3 low on stock</b><span>AP flour, oat milk…</span></div>
+        <div class="tile"><div class="ic" data-i="cal"></div><b>Pickup at 2:00</b><span>Catering · 4 dz scones</span></div>
+        <div class="tile"><div class="ic" data-i="book"></div><b>Recipes</b><span>Scale a batch</span></div>
+      </div>
+    </div>
+    <nav class="nav" data-nav="home"></nav>
+  </div></div>
+
+  <!-- Inventory -->
+  <div class="phone"><div class="screen">
+    <div class="bar"><div class="badge"><div class="mark">S</div></div><div class="shop">[Shop Name]</div><div class="avatar">SK</div></div>
+    <div class="scroll">
+      <div class="title hf">Inventory</div>
+      <div class="hero col follow">
+        <div class="top"><div class="n hf">12 / 40</div><div class="due">Due Wed</div></div>
+        <div class="s">Weekly count · Bakers' items</div>
+        <div class="meter"><div style="width:30%"></div></div>
+      </div>
+      <div class="chips"><span class="chip on">Dry goods</span><span class="chip">Dairy</span><span class="chip">Produce</span><span class="chip">Packaging</span></div>
+      <div class="list">
+        <div class="item"><div class="nm"><b>AP flour <span class="tag low">Low</span></b><div class="sub">Par 50 lb</div></div>
+          <div class="step"><button>−</button><div class="v">8<small>lb</small></div><button>+</button></div></div>
+        <div class="item"><div class="nm"><b>Bread flour</b><div class="sub">Par 2 bags</div></div>
+          <div class="step"><button>−</button><div class="v">2<small>bags</small></div><button>+</button></div></div>
+        <div class="item"><div class="nm"><b>Cane sugar</b><div class="sub">Par 25 lb</div></div>
+          <div class="step"><button>−</button><div class="v">18<small>lb</small></div><button>+</button></div></div>
+        <div class="item todo"><div class="nm"><b>Brown sugar</b><div class="sub">Not counted yet</div></div>
+          <div class="step"><button>−</button><div class="v">–<small>lb</small></div><button>+</button></div></div>
+        <div class="item todo"><div class="nm"><b>Cocoa powder</b><div class="sub">Not counted yet</div></div>
+          <div class="step"><button>−</button><div class="v">–<small>lb</small></div><button>+</button></div></div>
+      </div>
+    </div>
+    <nav class="nav" data-nav="box"></nav>
+  </div></div>
+
+  <!-- Tasks -->
+  <div class="phone"><div class="screen">
+    <div class="bar"><div class="badge"><div class="mark">S</div></div><div class="shop">[Shop Name]</div><div class="avatar">SK</div></div>
+    <div class="scroll">
+      <div class="title hf">Tasks</div>
+      <div class="seg"><span>Mine</span><span class="on">Opening</span><span>Closing</span></div>
+      <div class="hero follow">
+        <svg width="62" height="62" viewBox="0 0 80 80" class="ring"><circle class="trk" cx="40" cy="40" r="34"/><circle class="arc" cx="40" cy="40" r="34"/></svg>
+        <div><div class="n hf">7 / 10</div><div class="s">Opening checklist · 3 left</div></div>
+      </div>
+      <div class="list">
+        <div class="task"><div class="ck"></div><div class="nm"><b>Wipe pastry case <span class="tag next">Next</span></b><div class="sub">Front counter</div></div><div class="due">today</div></div>
+        <div class="task"><div class="ck"></div><div class="nm"><b>Set out day-old rack</b><div class="sub">Front counter</div></div><div class="due">today</div></div>
+        <div class="task"><div class="ck"></div><div class="nm"><b>Check walk-in temp</b><div class="sub">Kitchen</div></div><div class="due">today</div></div>
+        <div class="label">Done · 7</div>
+        <div class="task done"><div class="ck" data-i="check"></div><div class="nm"><b>Brew first batch</b><div class="sub">Sam · 5:42 am</div></div></div>
+        <div class="task done"><div class="ck" data-i="check"></div><div class="nm"><b>Turn on ovens</b><div class="sub">Sam · 5:31 am</div></div></div>
+      </div>
+    </div>
+    <nav class="nav" data-nav="tasks"></nav>
+  </div></div>
+</template>
+
+<script>
+  const COLORS = [
+    ["Espresso","#6B4F3A"],["Cinnamon","#A0522D"],["Terracotta","#B5482E"],["Cherry","#B3263B"],
+    ["Rose","#B8325F"],["Berry","#8E2A5F"],["Plum","#6B3FA0"],["Indigo","#3949AB"],
+    ["Ocean","#1D6AA5"],["Teal","#0F766E"],["Sage","#4A7A52"],["Forest","#2E6B3F"],
+    ["Honey","#96650F"],["Slate","#475569"]
+  ];
+  const root = document.documentElement;
+  const rowDark = document.getElementById("rowDark"), rowLight = document.getElementById("rowLight");
+  const tpl = document.getElementById("screens");
+  rowDark.appendChild(tpl.content.cloneNode(true));
+  rowLight.appendChild(tpl.content.cloneNode(true));
+  window.__mockup = { screen: "dark-and-light", color: "Espresso", serif: false, layout: "f" };
+
+  // Each shop color gets a lighter partner for dark screens: same hue, lighter and a little richer.
+  function hexToHsl(hex) {
+    let [r, g, b] = [1,3,5].map(i => parseInt(hex.slice(i, i+2), 16) / 255);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    let h = 0, s = 0;
+    if (d) {
+      s = d / (1 - Math.abs(2*l - 1));
+      h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+    }
+    return [h, s, l];
+  }
+  function hslToHex(h, s, l) {
+    const c = (1 - Math.abs(2*l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c/2;
+    const [r, g, b] = h < 60 ? [c,x,0] : h < 120 ? [x,c,0] : h < 180 ? [0,c,x] : h < 240 ? [0,x,c] : h < 300 ? [x,0,c] : [c,0,x];
+    return "#" + [r, g, b].map(v => Math.round((v + m) * 255).toString(16).padStart(2, "0")).join("");
+  }
+  const darkPartner = hex => { const [h, s] = hexToHsl(hex); return hslToHex(h, Math.min(Math.max(s * 1.5, .4), .75), .7); };
+
+  // WCAG contrast for both modes, worked out here rather than claimed.
+  function lum(hex) {
+    const c = [1,3,5].map(i => parseInt(hex.slice(i, i+2), 16) / 255)
+      .map(v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+  }
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + .05) / (y + .05); };
+  const PAPER = "#FBF7F0", CREAM = "#FBF7F0", CARD_DARK = "#241C17", BG_DARK = "#17120F";
+  const pairs = [];
+  COLORS.forEach(([n, h]) => {
+    const p = darkPartner(h);
+    pairs.push(["dark", n, "accent on dark card", ratio(p, CARD_DARK)]);
+    pairs.push(["dark", n, "dark text on accent", ratio(BG_DARK, p)]);
+    pairs.push(["both", n, "cream text on shop color", ratio(CREAM, h)]);
+    pairs.push(["light", n, "shop color on paper", ratio(h, PAPER)]);
+  });
+  [["light", "fixed", "grey text on paper", ratio("#75685A", PAPER)],
+   ["light", "fixed", "red on paper", ratio("#B4382B", PAPER)],
+   ["light", "fixed", "amber on paper", ratio("#8A5D00", PAPER)],
+   ["light", "fixed", "E's original grey on paper", ratio("#8A7C6C", PAPER)],
+   ["dark", "fixed", "grey text on dark card", ratio("#A8998A", CARD_DARK)],
+   ["dark", "fixed", "red on dark card", ratio("#FF8A7A", CARD_DARK)],
+   ["dark", "fixed", "amber on dark card", ratio("#F2B84B", CARD_DARK)]].forEach(r => pairs.push(r));
+  const used = pairs.filter(r => r[2] !== "E's original grey on paper");
+  const fails = used.filter(r => r[3] < 4.5);
+  const low = used.reduce((a, b) => b[3] < a[3] ? b : a);
+  const eGrey = pairs.find(r => r[2] === "E's original grey on paper")[3];
+  document.getElementById("contrast").textContent = (fails.length
+      ? "Falls short: " + fails.map(f => `${f[1]} ${f[2]} (${f[3].toFixed(1)}:1)`).join("; ") + ". "
+      : `All text passes the 4.5:1 readability standard in both modes, for all ${COLORS.length} colors (the closest is ${low[1] === "fixed" ? "" : low[1] + " "}${low[2]}, ${low[3].toFixed(1)}:1). `)
+    + `E's original grey text was ${eGrey.toFixed(1)}:1, too faint, so light mode uses a slightly darker grey.`;
+  window.__mockup.contrast = pairs.map(r => [r[0], r[1], r[2], +r[3].toFixed(2)]);
+
+  let current = COLORS[0][1];
+  function applyColor() {
+    root.style.setProperty("--brand", current);
+    rowDark.style.setProperty("--hi", darkPartner(current));
+    rowLight.style.setProperty("--hi", current);
+  }
+  const sw = document.getElementById("sw"), swname = document.getElementById("swname");
+  COLORS.forEach(([name, hex], i) => {
+    const b = document.createElement("button");
+    b.className = "sw"; b.style.background = hex; b.title = name; b.setAttribute("aria-label", name);
+    b.onclick = () => {
+      document.querySelectorAll(".sw").forEach(x => x.classList.remove("on"));
+      b.classList.add("on"); current = hex; swname.textContent = name; window.__mockup.color = name; applyColor();
+    };
+    sw.appendChild(b);
+    if (i === 0) b.click();
+  });
+
+  const tgF = document.getElementById("tgF"), tgD = document.getElementById("tgD"), tgSerif = document.getElementById("tgSerif");
+  function setLayout(l) {
+    root.classList.toggle("lay-f", l === "f");
+    tgF.classList.toggle("on", l === "f"); tgD.classList.toggle("on", l === "d");
+    window.__mockup.layout = l;
+  }
+  tgF.onclick = () => setLayout("f");
+  tgD.onclick = () => setLayout("d");
+  tgSerif.onclick = () => { const on = root.classList.toggle("serif"); tgSerif.classList.toggle("on", on); window.__mockup.serif = on; };
+
+  const ICON = {
+    home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+    tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+    box: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',
+    cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>'
+  };
+  const svg = k => `<svg class="i" viewBox="0 0 24 24">${ICON[k]}</svg>`;
+  document.querySelectorAll("[data-i]").forEach(el => el.innerHTML = svg(el.dataset.i));
+  const NAV = [["home","Home"],["tasks","Tasks"],["box","Inventory"],["book","Recipes"],["cal","Agenda"]];
+  document.querySelectorAll("[data-nav]").forEach(el => {
+    el.innerHTML = NAV.map(([k, l]) => `<a class="${k === el.dataset.nav ? "on" : ""}">${svg(k)}${l}</a>`).join("");
+  });
+</script>
+</body>
+</html>

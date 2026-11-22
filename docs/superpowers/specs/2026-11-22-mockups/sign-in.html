@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup 3 · Signing in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@1,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --brand: #6B4F3A; --onbrand: #FBF7F0; }
+  .mode-dark {
+    --bg: #17120F; --card: #241C17; --card2: #2F261F; --ink: #F4ECE0; --muted: #A8998A;
+    --rule: #3A2F27; --cardline: transparent; --field: #241C17; --fieldline: #4A3D33;
+    --tint: color-mix(in srgb, var(--hi) 16%, var(--card));
+  }
+  .mode-light {
+    --bg: #FBF7F0; --card: #FBF7F0; --card2: #F3ECE0; --ink: #2A2420; --muted: #75685A;
+    --rule: #E6DCCB; --cardline: #E6DCCB; --field: #FFFFFF; --fieldline: #D9CCB6;
+    --tint: color-mix(in srgb, var(--brand) 11%, var(--bg));
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #E6E7EA; color: #1d1d1f; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+  .page h1 { font-size: 20px; margin: 0 0 4px; }
+  .q { color: #555; font-size: 14px; margin: 0 0 16px; line-height: 1.45; max-width: 820px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; margin-bottom: 20px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px #ccc; cursor: pointer; padding: 0; }
+  .sw.on { box-shadow: 0 0 0 2px #1d1d1f; }
+  .tg { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
+  .tg.on { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+  .row { display: flex; flex-wrap: wrap; gap: 30px; justify-content: center; align-items: flex-start; }
+  .opt { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .opt h2 { font-size: 15px; margin: 0; }
+  .opt p { font-size: 13px; color: #555; margin: 0; text-align: center; line-height: 1.45; max-width: 560px; }
+  .note { text-align: center; font-size: 13px; color: #666; margin-top: 30px; }
+
+  .hf { font-weight: 800; letter-spacing: -.02em; }
+  svg.i { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .badge { border-radius: 12px; background: #FBF7F0; display: grid; place-items: center; flex: none; }
+  .mode-light .badge { box-shadow: 0 0 0 1px var(--rule); }
+  .mark { border-radius: 50%; background: #23324A; color: #E8C77A; font-family: Fraunces, Georgia, serif; font-style: italic; font-weight: 700; display: grid; place-items: center; }
+
+  /* ---------- tablet ---------- */
+  .tablet { width: 660px; height: 470px; border-radius: 30px; background: #000; padding: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.2); }
+  .tscreen { width: 100%; height: 100%; border-radius: 18px; overflow: hidden; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; position: relative; }
+  .tbar { display: flex; align-items: center; gap: 10px; padding: 14px 18px; }
+  .tbar .badge { width: 34px; height: 34px; } .tbar .mark { width: 26px; height: 26px; font-size: 14px; }
+  .tbar .shop { font-weight: 700; font-size: 15px; flex: 1; }
+  .tbar .clock { color: var(--muted); font-size: 13px; font-weight: 600; }
+  .stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px; }
+  .stage h3 { font-size: 26px; margin: 0; }
+  .stage .sub { color: var(--muted); font-size: 13px; margin: 4px 0 18px; }
+  .people { display: grid; grid-template-columns: repeat(5, 104px); gap: 12px; }
+  .person { background: var(--card); border: 1px solid var(--cardline); border-radius: 18px; padding: 14px 8px 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; font: inherit; color: inherit; }
+  .person:hover { outline: 2px solid var(--hi); }
+  .av { width: 52px; height: 52px; border-radius: 50%; background: var(--tint); color: var(--hi); display: grid; place-items: center; font-weight: 800; font-size: 17px; }
+  .person b { font-size: 13.5px; }
+  .person span { font-size: 11px; color: var(--muted); margin-top: -4px; }
+  .tfoot { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px 14px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--muted); }
+  .tfoot a { color: var(--hi); font-weight: 700; text-decoration: none; }
+
+  .pinwrap { display: none; width: 100%; align-items: center; justify-content: center; gap: 56px; }
+  .tscreen.pin .people, .tscreen.pin .who { display: none; }
+  .tscreen.pin .pinwrap { display: flex; }
+  .pinleft { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 190px; }
+  .pinleft .av { width: 84px; height: 84px; font-size: 28px; }
+  .pinleft h3 { font-size: 24px; margin: 4px 0 0; }
+  .pinleft .sub { margin: 0; }
+  .dots { display: flex; gap: 12px; margin: 10px 0 6px; min-height: 18px; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--muted); }
+  .dot.on { background: var(--hi); border-color: var(--hi); }
+  .ok { display: none; color: var(--hi); font-weight: 700; font-size: 14px; }
+  .tscreen.done .dots { display: none; } .tscreen.done .ok { display: block; }
+  .back { color: var(--hi); font-weight: 700; font-size: 13px; cursor: pointer; background: none; border: 0; font-family: inherit; }
+  .keys { display: grid; grid-template-columns: repeat(3, 66px); gap: 10px; }
+  .key { height: 56px; border-radius: 16px; background: var(--card); border: 1px solid var(--cardline); color: var(--ink); font: inherit; font-size: 22px; font-weight: 700; cursor: pointer; }
+  .key:active { background: var(--tint); }
+  .key.blank { visibility: hidden; }
+
+  /* ---------- phone ---------- */
+  .phone { width: 300px; height: 620px; border-radius: 36px; background: #000; padding: 9px; box-shadow: 0 12px 30px rgba(0,0,0,.2); }
+  .screen { width: 100%; height: 100%; border-radius: 28px; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-size: 13px; }
+  .url { margin: 12px 14px 0; padding: 7px 12px; border-radius: 12px; background: var(--card2); color: var(--muted); font-size: 11.5px; display: flex; align-items: center; gap: 6px; justify-content: center; }
+  .url svg.i { width: 13px; height: 13px; }
+  .url b { color: var(--ink); font-weight: 600; }
+  .signin { flex: 1; display: flex; flex-direction: column; padding: 34px 24px 18px; }
+  .signin .badge { width: 68px; height: 68px; border-radius: 20px; align-self: center; }
+  .signin .mark { width: 54px; height: 54px; font-size: 28px; }
+  .signin h3 { text-align: center; font-size: 22px; margin: 14px 0 2px; }
+  .signin .sub { text-align: center; color: var(--muted); margin: 0 0 22px; }
+  .lab { font-size: 12px; font-weight: 700; margin: 0 0 6px; }
+  .field { height: 46px; border-radius: 14px; background: var(--field); border: 1px solid var(--fieldline); margin-bottom: 14px; padding: 0 14px; display: flex; align-items: center; color: var(--muted); font-size: 13.5px; }
+  .btn { height: 50px; border-radius: 14px; background: var(--brand); color: var(--onbrand); font-weight: 800; font-size: 15px; display: grid; place-items: center; margin-top: 6px; }
+  .forgot { text-align: center; color: var(--hi); font-weight: 700; font-size: 13px; margin-top: 16px; }
+  .powered { margin-top: auto; text-align: center; color: var(--muted); font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Mockup 3 · Signing in</h1>
+  <p class="q">Two ways in, matching how your staff work. The shop tablet is clickable: tap a name, then any four digits.
+    Shop name, logo, people and every label are stand-ins; the final wording is yours.</p>
+
+  <div class="controls">
+    <div class="swatches" id="sw"></div>
+    <div style="display:flex;gap:8px">
+      <button class="tg on" id="tgDark">Dark</button>
+      <button class="tg" id="tgLight">Light</button>
+    </div>
+  </div>
+
+  <div class="row mode-dark" id="devices">
+
+    <div class="opt">
+      <div class="tablet"><div class="tscreen" id="tab">
+        <div class="tbar"><div class="badge"><div class="mark">S</div></div><div class="shop">[Shop Name]</div><div class="clock">6:04 am · Tue, Nov 18</div></div>
+        <div class="stage">
+          <div class="who" style="text-align:center"><h3 class="hf">Who's working?</h3><div class="sub">Tap your name</div></div>
+          <div class="people" id="people"></div>
+          <div class="pinwrap">
+            <div class="pinleft">
+              <div class="av" id="pinAv">SK</div>
+              <h3 class="hf" id="pinHi">Hi, Sam</h3>
+              <div class="sub">Enter your PIN</div>
+              <div class="dots" id="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+              <div class="ok" id="ok">✓ Signed in</div>
+              <button class="back" id="back">← Not you?</button>
+            </div>
+            <div class="keys" id="keys"></div>
+          </div>
+        </div>
+        <div class="tfoot"><span>Shop tablet · locks after 5 min idle</span><a>Sign in with email instead</a></div>
+      </div></div>
+      <h2>The shop tablet</h2>
+      <p>The shop owner sets up this tablet once. After that it opens to "Who's working?": tap your name, enter a 4-digit PIN.
+        It goes back to this screen when someone taps their avatar, or after a few idle minutes. PINs work only on a tablet the owner set up.</p>
+    </div>
+
+    <div class="opt">
+      <div class="phone"><div class="screen">
+        <div class="url"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><b>[shop]</b>.[yourproduct].com</div>
+        <div class="signin">
+          <div class="badge"><div class="mark">S</div></div>
+          <h3 class="hf">[Shop Name]</h3>
+          <div class="sub">Staff sign-in</div>
+          <div class="lab">Email</div><div class="field">sam@example.com</div>
+          <div class="lab">Password</div><div class="field">••••••••••</div>
+          <div class="btn">Sign in</div>
+          <div class="forgot">Forgot password?</div>
+          <div class="powered">[Product Name]</div>
+        </div>
+      </div></div>
+      <h2>Your own phone</h2>
+      <p>The shop's own address, logo and color, like a school's Canvas page.
+        Email and password, and it stays signed in on that phone.</p>
+    </div>
+
+  </div>
+  <div class="note">Tell me in chat what's off. I can see what you tapped here too.</div>
+</div>
+
+<script>
+  const COLORS = [
+    ["Espresso","#6B4F3A"],["Cinnamon","#A0522D"],["Terracotta","#B5482E"],["Cherry","#B3263B"],
+    ["Rose","#B8325F"],["Berry","#8E2A5F"],["Plum","#6B3FA0"],["Indigo","#3949AB"],
+    ["Ocean","#1D6AA5"],["Teal","#0F766E"],["Sage","#4A7A52"],["Forest","#2E6B3F"],
+    ["Honey","#96650F"],["Slate","#475569"]
+  ];
+  const root = document.documentElement, devices = document.getElementById("devices");
+  window.__mockup = { screen: "sign-in", color: "Espresso", mode: "dark", tapped: [] };
+
+  function hexToHsl(hex) {
+    let [r, g, b] = [1,3,5].map(i => parseInt(hex.slice(i, i+2), 16) / 255);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    let h = 0, s = 0;
+    if (d) { s = d / (1 - Math.abs(2*l - 1)); h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+    return [h, s, l];
+  }
+  function hslToHex(h, s, l) {
+    const c = (1 - Math.abs(2*l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c/2;
+    const [r, g, b] = h < 60 ? [c,x,0] : h < 120 ? [x,c,0] : h < 180 ? [0,c,x] : h < 240 ? [0,x,c] : h < 300 ? [x,0,c] : [c,0,x];
+    return "#" + [r, g, b].map(v => Math.round((v + m) * 255).toString(16).padStart(2, "0")).join("");
+  }
+  const darkPartner = hex => { const [h, s] = hexToHsl(hex); return hslToHex(h, Math.min(Math.max(s * 1.5, .4), .75), .7); };
+
+  let current = COLORS[0][1], mode = "dark";
+  function apply() {
+    root.style.setProperty("--brand", current);
+    devices.style.setProperty("--hi", mode === "dark" ? darkPartner(current) : current);
+    devices.classList.toggle("mode-dark", mode === "dark"); devices.classList.toggle("mode-light", mode === "light");
+  }
+  const sw = document.getElementById("sw");
+  COLORS.forEach(([name, hex], i) => {
+    const b = document.createElement("button");
+    b.className = "sw"; b.style.background = hex; b.title = name; b.setAttribute("aria-label", name);
+    b.onclick = () => { document.querySelectorAll(".sw").forEach(x => x.classList.remove("on")); b.classList.add("on"); current = hex; window.__mockup.color = name; apply(); };
+    sw.appendChild(b); if (i === 0) b.click();
+  });
+  const tgDark = document.getElementById("tgDark"), tgLight = document.getElementById("tgLight");
+  function setMode(m) { mode = m; tgDark.classList.toggle("on", m === "dark"); tgLight.classList.toggle("on", m === "light"); window.__mockup.mode = m; apply(); }
+  tgDark.onclick = () => setMode("dark"); tgLight.onclick = () => setMode("light");
+
+  // Clickable PIN flow. Any four digits "work"; nothing is checked or stored.
+  const PEOPLE = [["Sam","SK","Baker"],["Jordan","JR","Barista"],["Alex","AL","Front counter"],["Priya","PM","Manager"],["Lee","LT","Baker"]];
+  const tab = document.getElementById("tab"), people = document.getElementById("people");
+  const dots = [...document.querySelectorAll("#dots .dot")];
+  let typed = 0, timer = null;
+  function reset() { clearTimeout(timer); typed = 0; dots.forEach(d => d.classList.remove("on")); tab.classList.remove("pin", "done"); }
+  PEOPLE.forEach(([name, ini, role]) => {
+    const b = document.createElement("button");
+    b.className = "person"; b.innerHTML = `<div class="av">${ini}</div><b>${name}</b><span>${role}</span>`;
+    b.onclick = () => {
+      reset(); window.__mockup.tapped.push(name);
+      document.getElementById("pinAv").textContent = ini; document.getElementById("pinHi").textContent = "Hi, " + name;
+      document.getElementById("ok").textContent = "✓ Signed in as " + name;
+      tab.classList.add("pin");
+    };
+    people.appendChild(b);
+  });
+  const keys = document.getElementById("keys");
+  ["1","2","3","4","5","6","7","8","9","","0","⌫"].forEach(k => {
+    const b = document.createElement("button");
+    b.className = "key" + (k ? "" : " blank"); b.textContent = k;
+    b.onclick = () => {
+      if (tab.classList.contains("done")) return;
+      if (k === "⌫") { if (typed) dots[--typed].classList.remove("on"); return; }
+      if (typed < 4) dots[typed++].classList.add("on");
+      if (typed === 4) { tab.classList.add("done"); timer = setTimeout(reset, 1600); }
+    };
+    keys.appendChild(b);
+  });
+  document.getElementById("back").onclick = reset;
+</script>
+</body>
+</html>

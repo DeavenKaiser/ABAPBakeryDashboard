@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup 4 · Tablet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@1,500;1,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --brand: #6B4F3A; --onbrand: #FBF7F0; }
+  .mode-dark {
+    --bg: #17120F; --card: #241C17; --card2: #2F261F; --ink: #F4ECE0; --muted: #A8998A;
+    --rule: #3A2F27; --cardline: transparent; --navbg: #1D1713;
+    --red: #FF8A7A; --redbg: #3D201B; --amber: #F2B84B;
+    --sel-bg: var(--hi); --sel-fg: #17120F; --avbg: #2F261F; --avfg: #A8998A;
+    --tint: color-mix(in srgb, var(--hi) 16%, var(--card));
+  }
+  .mode-light {
+    --bg: #FBF7F0; --card: #FBF7F0; --card2: #F3ECE0; --ink: #2A2420; --muted: #75685A;
+    --rule: #E6DCCB; --cardline: #E6DCCB; --navbg: #F6F0E5;
+    --red: #B4382B; --redbg: #F6E0DA; --amber: #8A5D00;
+    --sel-bg: var(--brand); --sel-fg: #FBF7F0; --avbg: #EFE7DA; --avfg: #5A4A3A;
+    --tint: color-mix(in srgb, var(--brand) 11%, var(--bg));
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #E6E7EA; color: #1d1d1f; }
+  .page { max-width: 980px; margin: 0 auto; padding: 20px 16px 48px; }
+  .page h1 { font-size: 20px; margin: 0 0 4px; }
+  .q { color: #555; font-size: 14px; margin: 0 0 16px; line-height: 1.45; max-width: 820px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; margin-bottom: 20px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px #ccc; cursor: pointer; padding: 0; }
+  .sw.on { box-shadow: 0 0 0 2px #1d1d1f; }
+  .tg { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
+  .tg.on { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+  .stack { display: flex; flex-direction: column; align-items: center; gap: 34px; }
+  .opt { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .opt h2 { font-size: 15px; margin: 0; }
+  .opt p { font-size: 13px; color: #555; margin: 0; text-align: center; line-height: 1.45; max-width: 640px; }
+  .note { text-align: center; font-size: 13px; color: #666; margin-top: 30px; }
+
+  .hf { font-weight: 800; letter-spacing: -.02em; }
+  svg.i { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .ring { transform: rotate(-90deg); flex: none; }
+  .ring circle { fill: none; stroke-width: 9; }
+  .ring .trk { stroke: var(--rule); }
+  .ring .arc { stroke: var(--hi); stroke-linecap: round; stroke-dasharray: 149.5 213.6; }
+  .badge { width: 40px; height: 40px; border-radius: 12px; background: #FBF7F0; display: grid; place-items: center; flex: none; }
+  .mode-light .badge { box-shadow: 0 0 0 1px var(--rule); }
+  .mark { width: 30px; height: 30px; border-radius: 50%; background: #23324A; color: #E8C77A; font-family: Fraunces, Georgia, serif; font-style: italic; font-weight: 700; font-size: 16px; display: grid; place-items: center; }
+
+  .tablet { width: 900px; height: 610px; border-radius: 32px; background: #000; padding: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.2); }
+  .tscreen { width: 100%; height: 100%; border-radius: 20px; overflow: hidden; background: var(--bg); color: var(--ink); display: flex; font-size: 13px; }
+
+  /* left rail */
+  .rail { width: 84px; background: var(--navbg); border-right: 1px solid var(--rule); display: flex; flex-direction: column; align-items: center; padding: 14px 0 12px; gap: 4px; flex: none; }
+  .rail .badge { margin-bottom: 10px; }
+  .rail a { width: 68px; padding: 8px 0 7px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; color: var(--muted); text-decoration: none; }
+  .rail a.on { background: var(--tint); color: var(--hi); }
+  .rail .me { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); font-weight: 600; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--avbg); color: var(--avfg); box-shadow: 0 0 0 2px var(--hi); }
+
+  .main { flex: 1; min-width: 0; padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+  .head .title { font-size: 26px; line-height: 1.1; }
+  .date { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .shop { font-weight: 700; font-size: 13px; color: var(--muted); }
+
+  .card { background: var(--card); border: 1px solid var(--cardline); border-radius: 18px; padding: 14px 16px; min-width: 0; }
+  .t { font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--hi); text-transform: uppercase; margin-bottom: 8px; }
+  .s { color: var(--muted); font-size: 12px; }
+
+  /* Home grid */
+  .hgrid { display: grid; grid-template-columns: 1.35fr 1fr 1fr; grid-template-rows: auto 1fr; gap: 12px; flex: 1; min-height: 0; }
+  .ringcard { grid-column: span 1; display: flex; gap: 16px; align-items: center; }
+  .ringcard .n { font-size: 30px; line-height: 1; }
+  .ringcard .go { display: inline-block; margin-top: 10px; background: var(--tint); color: var(--hi); padding: 6px 12px; border-radius: 99px; font-weight: 700; font-size: 12px; }
+  .stat .n { font-size: 34px; line-height: 1.05; }
+  .stat .n.r { color: var(--red); } .stat .n.a { color: var(--amber); }
+  .li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--rule); }
+  .li:first-of-type { border-top: 0; padding-top: 0; }
+  .li .m { flex: 1; font-weight: 600; min-width: 0; } .li .s { flex: none; }
+  .li .s.r { color: var(--red); font-weight: 700; } .li .s.a { color: var(--amber); font-weight: 700; }
+  .chipic { width: 30px; height: 30px; border-radius: 10px; background: var(--tint); display: grid; place-items: center; color: var(--hi); flex: none; }
+  .chipic svg.i { width: 17px; height: 17px; }
+  .quote { border-left: 3px solid var(--hi); padding: 1px 0 1px 12px; font-family: Fraunces, Georgia, serif; font-style: italic; font-size: 16px; line-height: 1.35; }
+  .quote small { display: block; font-family: Inter, sans-serif; font-style: normal; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .addnote { margin-top: 12px; color: var(--hi); font-weight: 700; font-size: 12.5px; }
+
+  /* Inventory two-pane */
+  .countbar { display: flex; align-items: center; gap: 16px; }
+  .countbar .n { font-size: 22px; line-height: 1; white-space: nowrap; }
+  .meter { flex: 1; height: 10px; border-radius: 99px; background: var(--rule); overflow: hidden; }
+  .meter div { height: 100%; border-radius: 99px; background: var(--hi); }
+  .due { background: var(--tint); color: var(--hi); padding: 5px 11px; border-radius: 99px; font-weight: 700; font-size: 12px; white-space: nowrap; }
+  .igrid { display: grid; grid-template-columns: 190px 1fr; gap: 14px; flex: 1; min-height: 0; }
+  .cats { display: flex; flex-direction: column; gap: 6px; }
+  .cat { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--cardline); font-weight: 700; }
+  .cat span { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .cat.on { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
+  .cat.on span { color: var(--sel-fg); opacity: .8; }
+  .items { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+  .item { background: var(--card); border: 1px solid var(--cardline); border-radius: 16px; padding: 9px 9px 9px 14px; display: flex; align-items: center; gap: 10px; }
+  .nm { flex: 1; min-width: 0; }
+  .nm b { display: block; font-size: 13.5px; }
+  .nm .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .tag { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 99px; margin-left: 4px; vertical-align: 1px; background: var(--redbg); color: var(--red); }
+  .step { display: flex; align-items: center; gap: 3px; }
+  .step button { width: 38px; height: 38px; border-radius: 12px; border: 0; background: var(--tint); color: var(--hi); font-size: 19px; font-weight: 700; font-family: inherit; padding: 0; }
+  .step .v { width: 42px; text-align: center; font-weight: 800; font-size: 16px; line-height: 1.1; }
+  .step .v small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); }
+  .item.todo .v { color: var(--muted); opacity: .6; }
+  .item.todo .nm .sub { color: var(--amber); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Mockup 4 · On the shop tablet</h1>
+  <p class="q">The same look on a tablet turned sideways in a stand. With more room, the bottom tabs move to a rail down the left,
+    and screens spread into columns instead of one long scroll. Your avatar sits at the bottom of the rail: tap it to hand the tablet to the next person.
+    Names, logo, data and labels are stand-ins.</p>
+
+  <div class="controls">
+    <div class="swatches" id="sw"></div>
+    <div style="display:flex;gap:8px">
+      <button class="tg on" id="tgDark">Dark</button>
+      <button class="tg" id="tgLight">Light</button>
+    </div>
+  </div>
+
+  <div class="stack mode-dark" id="devices">
+
+    <div class="opt">
+      <div class="tablet"><div class="tscreen">
+        <nav class="rail" data-rail="home"></nav>
+        <div class="main">
+          <div class="head">
+            <div><div class="title hf">Good morning, Sam</div><div class="date">Tuesday, Nov 18 · Opening shift</div></div>
+            <div class="shop">[Shop Name]</div>
+          </div>
+          <div class="hgrid">
+            <div class="card ringcard">
+              <svg width="84" height="84" viewBox="0 0 80 80" class="ring"><circle class="trk" cx="40" cy="40" r="34"/><circle class="arc" cx="40" cy="40" r="34"/></svg>
+              <div><div class="n hf">7 / 10</div><div class="s" style="margin-top:5px">Opening checklist · 3 left<br>Next: wipe pastry case</div><div class="go">Open tasks →</div></div>
+            </div>
+            <div class="card stat"><div class="t">Low on stock</div><div class="n r hf">3</div><div class="s">AP flour, oat milk, cocoa</div></div>
+            <div class="card stat"><div class="t">Not counted</div><div class="n a hf">2</div><div class="s">Count due Wednesday</div></div>
+
+            <div class="card">
+              <div class="t">Today</div>
+              <div class="li"><span class="chipic" data-i="cal"></span><span class="m">Catering pickup · 4 dz scones</span><span class="s">2:00 pm</span></div>
+              <div class="li"><span class="chipic" data-i="box"></span><span class="m">Inventory count</span><span class="s">Wed</span></div>
+              <div class="li"><span class="chipic" data-i="tasks"></span><span class="m">Closing checklist</span><span class="s">3:00 pm</span></div>
+            </div>
+            <div class="card">
+              <div class="t">Needs attention</div>
+              <div class="li"><span class="m">AP flour</span><span class="s r">8 lb left</span></div>
+              <div class="li"><span class="m">Oat milk</span><span class="s r">1 carton</span></div>
+              <div class="li"><span class="m">Whole milk</span><span class="s a">not counted</span></div>
+              <div class="li"><span class="m">Heavy cream</span><span class="s a">not counted</span></div>
+            </div>
+            <div class="card">
+              <div class="t">Shift note</div>
+              <div class="quote">“Oven 2 runs hot. Rotate the trays at ten minutes.”<small>Jordan · last night's close</small></div>
+              <div class="addnote">＋ Leave a note</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <h2>Home</h2>
+      <p>Everything from the phone's Home on one screen, no scrolling: progress, the two numbers, today, what needs attention, and the shift note.</p>
+    </div>
+
+    <div class="opt">
+      <div class="tablet"><div class="tscreen">
+        <nav class="rail" data-rail="box"></nav>
+        <div class="main">
+          <div class="head">
+            <div><div class="title hf">Inventory</div><div class="date">Weekly count · Bakers' items</div></div>
+            <div class="shop">[Shop Name]</div>
+          </div>
+          <div class="card countbar">
+            <div class="n hf">12 / 40</div><div class="s">counted</div>
+            <div class="meter"><div style="width:30%"></div></div>
+            <div class="due">Due Wed</div>
+          </div>
+          <div class="igrid">
+            <div class="cats">
+              <div class="cat on">Dry goods <span>12 of 18</span></div>
+              <div class="cat">Dairy <span>0 of 8</span></div>
+              <div class="cat">Produce <span>0 of 6</span></div>
+              <div class="cat">Packaging <span>0 of 8</span></div>
+            </div>
+            <div class="items">
+              <div class="item"><div class="nm"><b>AP flour <span class="tag">Low</span></b><div class="sub">Par 50 lb</div></div><div class="step"><button>−</button><div class="v">8<small>lb</small></div><button>+</button></div></div>
+              <div class="item"><div class="nm"><b>Bread flour</b><div class="sub">Par 2 bags</div></div><div class="step"><button>−</button><div class="v">2<small>bags</small></div><button>+</button></div></div>
+              <div class="item"><div class="nm"><b>Cane sugar</b><div class="sub">Par 25 lb</div></div><div class="step"><button>−</button><div class="v">18<small>lb</small></div><button>+</button></div></div>
+              <div class="item"><div class="nm"><b>Powdered sugar</b><div class="sub">Par 10 lb</div></div><div class="step"><button>−</button><div class="v">6<small>lb</small></div><button>+</button></div></div>
+              <div class="item todo"><div class="nm"><b>Brown sugar</b><div class="sub">Not counted yet</div></div><div class="step"><button>−</button><div class="v">–<small>lb</small></div><button>+</button></div></div>
+              <div class="item todo"><div class="nm"><b>Cocoa powder</b><div class="sub">Not counted yet</div></div><div class="step"><button>−</button><div class="v">–<small>lb</small></div><button>+</button></div></div>
+              <div class="item"><div class="nm"><b>Rolled oats</b><div class="sub">Par 1 tub</div></div><div class="step"><button>−</button><div class="v">1<small>tub</small></div><button>+</button></div></div>
+              <div class="item todo"><div class="nm"><b>Baking soda</b><div class="sub">Not counted yet</div></div><div class="step"><button>−</button><div class="v">–<small>box</small></div><button>+</button></div></div>
+              <div class="item"><div class="nm"><b>Kosher salt</b><div class="sub">Par 2 boxes</div></div><div class="step"><button>−</button><div class="v">3<small>boxes</small></div><button>+</button></div></div>
+              <div class="item todo"><div class="nm"><b>Yeast</b><div class="sub">Not counted yet</div></div><div class="step"><button>−</button><div class="v">–<small>lb</small></div><button>+</button></div></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <h2>Counting inventory</h2>
+      <p>Categories down the side, items in two columns, the count's progress across the top. Built for standing at the shelf and tapping through.</p>
+    </div>
+
+  </div>
+  <div class="note">Tell me in chat what's off or missing on the tablet.</div>
+</div>
+
+<script>
+  const COLORS = [
+    ["Espresso","#6B4F3A"],["Cinnamon","#A0522D"],["Terracotta","#B5482E"],["Cherry","#B3263B"],
+    ["Rose","#B8325F"],["Berry","#8E2A5F"],["Plum","#6B3FA0"],["Indigo","#3949AB"],
+    ["Ocean","#1D6AA5"],["Teal","#0F766E"],["Sage","#4A7A52"],["Forest","#2E6B3F"],
+    ["Honey","#96650F"],["Slate","#475569"]
+  ];
+  const root = document.documentElement, devices = document.getElementById("devices");
+  window.__mockup = { screen: "tablet", color: "Espresso", mode: "dark" };
+
+  function hexToHsl(hex) {
+    let [r, g, b] = [1,3,5].map(i => parseInt(hex.slice(i, i+2), 16) / 255);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    let h = 0, s = 0;
+    if (d) { s = d / (1 - Math.abs(2*l - 1)); h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+    return [h, s, l];
+  }
+  function hslToHex(h, s, l) {
+    const c = (1 - Math.abs(2*l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c/2;
+    const [r, g, b] = h < 60 ? [c,x,0] : h < 120 ? [x,c,0] : h < 180 ? [0,c,x] : h < 240 ? [0,x,c] : h < 300 ? [x,0,c] : [c,0,x];
+    return "#" + [r, g, b].map(v => Math.round((v + m) * 255).toString(16).padStart(2, "0")).join("");
+  }
+  const darkPartner = hex => { const [h, s] = hexToHsl(hex); return hslToHex(h, Math.min(Math.max(s * 1.5, .4), .75), .7); };
+
+  let current = COLORS[0][1], mode = "dark";
+  function apply() {
+    root.style.setProperty("--brand", current);
+    devices.style.setProperty("--hi", mode === "dark" ? darkPartner(current) : current);
+    devices.classList.toggle("mode-dark", mode === "dark"); devices.classList.toggle("mode-light", mode === "light");
+  }
+  const sw = document.getElementById("sw");
+  COLORS.forEach(([name, hex], i) => {
+    const b = document.createElement("button");
+    b.className = "sw"; b.style.background = hex; b.title = name; b.setAttribute("aria-label", name);
+    b.onclick = () => { document.querySelectorAll(".sw").forEach(x => x.classList.remove("on")); b.classList.add("on"); current = hex; window.__mockup.color = name; apply(); };
+    sw.appendChild(b); if (i === 0) b.click();
+  });
+  const tgDark = document.getElementById("tgDark"), tgLight = document.getElementById("tgLight");
+  function setMode(m) { mode = m; tgDark.classList.toggle("on", m === "dark"); tgLight.classList.toggle("on", m === "light"); window.__mockup.mode = m; apply(); }
+  tgDark.onclick = () => setMode("dark"); tgLight.onclick = () => setMode("light");
+
+  const ICON = {
+    home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+    tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+    box: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',
+    cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    cart: '<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.5 12h12l2-8H6.5"/>',
+    more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
+  };
+  const svg = k => `<svg class="i" viewBox="0 0 24 24">${ICON[k]}</svg>`;
+  document.querySelectorAll("[data-i]").forEach(el => el.innerHTML = svg(el.dataset.i));
+  const RAIL = [["home","Home"],["tasks","Tasks"],["box","Inventory"],["book","Recipes"],["cal","Agenda"],["cart","Shopping"],["more","More"]];
+  document.querySelectorAll("[data-rail]").forEach(el => {
+    el.innerHTML = `<div class="badge"><div class="mark">S</div></div>`
+      + RAIL.map(([k, l]) => `<a class="${k === el.dataset.rail ? "on" : ""}">${svg(k)}${l}</a>`).join("")
+      + `<div class="me"><div class="avatar">SK</div>Switch</div>`;
+  });
+</script>
+</body>
+</html>
