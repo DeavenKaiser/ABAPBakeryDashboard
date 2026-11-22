@@ -103,7 +103,7 @@
       const byCat={};
       RECIPES.forEach(r=>{ (byCat[r.category||"Other"]||=[]).push(r); });
       Object.keys(byCat).sort().forEach(cat=>{
-        html+=`<h2 class="section">${cat}</h2>`;
+        html+=`<h2 class="section">${esc(cat)}</h2>`;
         byCat[cat].forEach(r=>{
           const opts=OPTS[r.id]||[];
           html+=`<div class="card" style="margin-bottom:10px">
@@ -214,7 +214,7 @@
       const byCat={};
       RECIPES.forEach(r=>{ (byCat[r.category||"Other"]||=[]).push(r); });
       Object.keys(byCat).sort().forEach(cat=>{
-        html+=`<h2 class="section">${cat}</h2><div class="card"><div style="overflow-x:auto"><table class="rpt">
+        html+=`<h2 class="section">${esc(cat)}</h2><div class="card"><div style="overflow-x:auto"><table class="rpt">
           <tr><th>Item</th><th class="num">Price</th><th class="num">Ingred.</th><th class="num">Overhead</th><th class="num">Cost</th><th class="num">Profit</th><th class="num">Margin</th></tr>`;
         byCat[cat].forEach(r=>{
           const opts=OPTS[r.id]||[];
@@ -237,7 +237,7 @@
             const optLabel = o.option_name ? `<span class="stat-label"> · ${esc(o.option_name)}</span>` : "";
             const mColor = margin==null ? "inherit" : margin>=50 ? "var(--sage)" : margin>=25 ? "var(--honey)" : "var(--berry)";
             html+=`<tr>
-              <td>${label}${optLabel}</td>
+              <td>${esc(label)}${optLabel}</td>
               <td class="num">$${Number(price).toFixed(2)}</td>
               <td class="num">$${ingCost.toFixed(2)}</td>
               <td class="num" style="color:#8a7d6d">$${overhead.toFixed(2)}</td>
@@ -266,7 +266,7 @@
       const byCat={};
       RECIPES.forEach(r=>{ (byCat[r.category||"Other"]||=[]).push(r); });
       Object.keys(byCat).sort().forEach(cat=>{
-        html+=`<div class="card"><h3 style="font-family:'Fraunces',serif;margin:0 0 10px">${cat}</h3>`;
+        html+=`<div class="card"><h3 style="font-family:'Fraunces',serif;margin:0 0 10px">${esc(cat)}</h3>`;
         byCat[cat].forEach(r=>{
           const opts=OPTS[r.id]||[];
           const priced = opts.map(o=>{
@@ -302,7 +302,7 @@
       items.forEach(r=>{ (byCat[r.category||"Other"]||=[]).push(r); });
       let rows="";
       Object.keys(byCat).sort().forEach(cat=>{
-        rows+=`<tr class="cat"><td colspan="2">${cat}</td></tr>`;
+        rows+=`<tr class="cat"><td colspan="2">${esc(cat)}</td></tr>`;
         byCat[cat].forEach(r=>{
           const opts=OPTS[r.id]||[];
           const priced=opts.map(o=>{
@@ -342,9 +342,9 @@
       </style></head><body>
         <div class="head">
           <img src="${location.origin}${location.pathname.replace(/[^/]*$/,'')}logo.svg" alt="ABAP Bakery" onerror="this.style.display='none'">
-          <div><h1>${(COMPANY.dba_name||COMPANY.legal_name||"ABAP Bakery")}</h1>
+          <div><h1>${esc(COMPANY.dba_name||COMPANY.legal_name||"ABAP Bakery")}</h1>
             <div style="font-size:14px;color:#8a7d6d">${title}</div>
-            ${(COMPANY.address||COMPANY.phone||COMPANY.website)?`<div style="font-size:12px;color:#a99;margin-top:2px">${[COMPANY.address,COMPANY.phone,COMPANY.website].filter(Boolean).join(" · ")}</div>`:""}
+            ${(COMPANY.address||COMPANY.phone||COMPANY.website)?`<div style="font-size:12px;color:#a99;margin-top:2px">${esc([COMPANY.address,COMPANY.phone,COMPANY.website].filter(Boolean).join(" · "))}</div>`:""}
           </div>
           <div class="meta">Effective ${today}<br>Prices subject to change</div>
         </div>

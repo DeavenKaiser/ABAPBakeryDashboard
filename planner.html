@@ -227,9 +227,9 @@
           <table class="rpt"><tr><th>Ingredient</th><th class="num">Need</th><th class="num">Have</th>${showShort?'<th class="num">Short by</th>':''}</tr>`;
         rows.forEach(p=>{
           h+=`<tr><td>${esc(p.ingredient)}</td>
-            <td class="num">${p.total_needed} ${p.needed_unit||""}</td>
-            <td class="num">${p.current_on_hand!=null?p.current_on_hand+" "+(p.inventory_unit||""):"—"}</td>
-            ${showShort?`<td class="num" style="color:var(--berry);font-weight:700">${p.shortfall!=null?p.shortfall+" "+(p.needed_unit||""):"—"}</td>`:""}</tr>`;
+            <td class="num">${esc(p.total_needed)} ${esc(p.needed_unit||"")}</td>
+            <td class="num">${p.current_on_hand!=null?esc(p.current_on_hand+" "+(p.inventory_unit||"")):"—"}</td>
+            ${showShort?`<td class="num" style="color:var(--berry);font-weight:700">${p.shortfall!=null?esc(p.shortfall+" "+(p.needed_unit||"")):"—"}</td>`:""}</tr>`;
         });
         h+=`</table></div></div>`;
         return h;

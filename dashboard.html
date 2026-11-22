@@ -197,7 +197,7 @@
           const txt = days<=0 ? "today!" : `${days} day${days===1?"":"s"} — ${dayName(dow)}`;
           const color = days<=1 ? "var(--berry)" : "var(--crust)";
           return `<div class="mini-item">
-            <span style="font-weight:600">${who} inventory</span>
+            <span style="font-weight:600">${esc(who)} inventory</span>
             <span style="margin-left:auto;color:${color};font-weight:800">${txt}</span></div>`;
         }
         let body;
@@ -326,7 +326,7 @@
       const firstName=(PROF.full_name||"there").split(" ")[0];
       let html = `<div class="hero">
         <div>
-          <h1>${greeting()}, ${firstName}</h1>
+          <h1>${greeting()}, ${esc(firstName)}</h1>
           <div class="sub" id="quoteLine">${fallbackLine()}</div>
         </div>
         ${ring(focusPct)}
@@ -511,7 +511,7 @@
       for(let r=1;r<=MAX_ROWS;r++) for(let c=1;c<=maxCols;c++){
         const cur=(item.cols===c && item.rows===r)?"current":"";
         cells+=`<div class="size-cell ${cur}" data-c="${c}" data-r="${r}"
-          onclick="setCardSize('${w}',${c},${r})"
+          onclick="setCardSize(${jsArg(w)},${c},${r})"
           onmouseover="hotCells(this)"></div>`;
       }
       pick.innerHTML=`<div class="sp-title">Tap a size (wide × tall)</div>

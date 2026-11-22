@@ -88,7 +88,7 @@
       const cats=categories();
       const sortLabels={name:"Name A–Z",ingredients:"# Ingredients",cost:"Cost"};
       html += `<div class="card" style="margin-bottom:12px">
-        <input type="text" id="search" placeholder="Search recipes…" value="${SEARCH}" oninput="SEARCH=this.value;renderList()" style="margin-bottom:10px">
+        <input type="text" id="search" placeholder="Search recipes…" value="${attr(SEARCH)}" oninput="SEARCH=this.value;renderList()" style="margin-bottom:10px">
         <div class="fs-bar">
           <div class="fs-drop">
             <button class="fs-btn ${CATSET.size?"has-active":""}" onclick="fsToggle(this)">
@@ -319,7 +319,7 @@
           <input type="text" id="rCat" list="catList" value="${attr(editing?editing.category:"")}"
             style="font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);width:100%" placeholder="e.g. Bread, Drinks, Seasonal…">
           <datalist id="catList">
-            ${cats.map(c=>`<option value="${c}"></option>`).join("")}
+            ${cats.map(c=>`<option value="${attr(c)}"></option>`).join("")}
           </datalist></div>
         <label class="stat-label">Ingredients</label>
         <div id="ingRows"></div>

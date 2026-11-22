@@ -227,6 +227,27 @@ tests is its own risk.
 **Sweep complete — all 14 files.** No ad-hoc `.replace()` sanitisers remain
 anywhere in the repo, and every inline script parses cleanly (`node --check`).
 
+**Correction, 18 Nov 2026.** The sweep was not complete. A review
+(`docs/review/2026-11-18-frontend-review.md`, C1–C2 and L1) found two open
+staff→admin routes, both reachable from the normal UI by any role with
+`can_edit_recipes`:
+
+- `recipes.category` and `recipes.name` rendered raw in `admin.html` (section
+  headings on all three tabs, the Margins item label, the printed price sheet)
+  and in the `recipes.html` category datalist.
+- `recipe_ingredients.unit` and `inventory_items.unit` rendered raw in the
+  `planner.html` Projection table.
+
+Both are fixed, along with the same pattern in lower-risk spots:
+`COMPANY.*` in the price sheet, `job_roles.label` on the dashboard and
+inventory tabs, the dashboard first name, the recipe search box value,
+`order_log.status` in reports, and the size-picker handler argument.
+
+The earlier grep searched for known field names, which missed values that had
+been copied into a local variable first (`cat`, `label`, `c`). The re-sweep
+listed every bare `${variable}` and every `${…field…}` not wrapped in an
+escaper, then traced each one to its source.
+
 ### Verification method
 
 A grep for escaped-vs-unescaped interpolation was run across the whole repo

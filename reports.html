@@ -98,7 +98,7 @@
         orders.forEach(o=>{
           h += `<tr><td>${new Date(o.ordered_at).toLocaleDateString()}</td>
             <td>${esc(o.inventory_items?.name??"?")}</td><td>${esc(o.inventory_items?.owner??"")}</td>
-            <td>${o.status}${o.received_at?" "+new Date(o.received_at).toLocaleDateString():""}</td></tr>`;
+            <td>${esc(o.status)}${o.received_at?" "+new Date(o.received_at).toLocaleDateString():""}</td></tr>`;
         });
         h += `</table>`;
       }

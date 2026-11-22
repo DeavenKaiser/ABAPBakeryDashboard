@@ -97,7 +97,7 @@ function canEditCount(it) {
       }
       // Scope tabs (only meaningful if the person has a role)
       if (MY_ROLE || IS_ADMIN) {
-        const mineLabel = MY_ROLE ? `My Items (${roleLabel(MY_ROLE)})` : "My Items";
+        const mineLabel = MY_ROLE ? `My Items (${esc(roleLabel(MY_ROLE))})` : "My Items";
         html += `<div class="card"><div style="display:flex;gap:8px">
           <button class="${SCOPE==='mine'?'':'secondary'}" onclick="SCOPE='mine';render()" ${!MY_ROLE?'disabled style=\"opacity:.5\"':''}>${mineLabel}</button>
           <button class="${SCOPE==='all'?'':'secondary'}" onclick="SCOPE='all';render()">All Inventory</button>
